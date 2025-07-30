@@ -9,6 +9,6 @@ class DummyCTDataset(Dataset):
         return self.length
 
     def __getitem__(self, idx):
-        image = torch.randn(1, 224, 224)
+        image = torch.randn(1, 224, 224, 64)
         label = torch.randint(0, 3, (1,)).item()
         return image, label
