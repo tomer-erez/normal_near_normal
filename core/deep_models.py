@@ -21,3 +21,19 @@ class CTTextCrossAttentionModel(nn.Module):
         attn_output, _ = self.cross_attention(ct_feat, text_feat, text_feat)
         logits = self.classifier(attn_output.squeeze(1))
         return logits
+
+class Tiny3DCNN(nn.Module):
+    def __init__(self, args=None,num_classes=2):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv3d(1, 8, 3, padding=1), nn.ReLU(), nn.MaxPool3d(2),
+            nn.Conv3d(8, 16, 3, padding=1), nn.ReLU(), nn.MaxPool3d(2),
+            nn.Conv3d(16, 32, 3, padding=1), nn.ReLU(), nn.AdaptiveAvgPool3d(1)
+        )
+        self.fc = nn.Linear(32, num_classes)
+
+    def forward(self, x):
+        x = self.net(x)
+        x = x.view(x.size(0), -1)
+        return self.fc(x)
+

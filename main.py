@@ -1,31 +1,37 @@
-from core.args import parse_args
-from core.build import build_optimizer_scheduler, maybe_resume,generate_data_splits
-from core.deep_models import CTTextCrossAttentionModel
-from core.image_data_loader import DummyCTTextDataset
-from core.train import train_and_evaluate
-from transformers import AutoTokenizer
-import torch
+from core import arguments
+from core import utilities_module
+from core import deep_models
+from core import image_data_set
+from core import train_loop
+
 
 def main():
-    args = parse_args()
-    print("Arguments:", vars(args))
+    args = arguments.get_args()
 
-    # Model
-    model = CTTextCrossAttentionModel()
-    model.to(args.device)
+    utilities_module.setup_output_file(args)
+    
+    
+    model = deep_models.Tiny3DCNN(args).to(args.device)
 
-    # Tokenizer & Dataset
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-multilingual-cased")
-    full_dataset = DummyCTTextDataset(tokenizer)
+    ds = image_data_set.SinoCTDataset(args)
+    train_loader,val_loader,test_loader=utilities_module.generate_loaders(args,ds)
 
-    # Split into train / val / test
-    train_loader,val_loader,test_loader = generate_data_splits(args, full_dataset)
+    optimizer, scheduler = utilities_module.build_optimizer_scheduler(
+        model, 
+        args.lr, 
+        args.weight_decay, 
+        args.epochs
+    )
 
-    # Optimizer & Scheduler
-    optimizer, scheduler = build_optimizer_scheduler(model, args.lr, args.weight_decay, args.epochs)
-    model, optimizer, start_epoch = maybe_resume(model, optimizer, args.resume)
-
-    train_and_evaluate(model, train_loader, val_loader, test_loader, optimizer, scheduler, args, start_epoch)
+    train_loop.train_and_evaluate(
+        model, 
+        train_loader, 
+        val_loader, 
+        test_loader, 
+        optimizer, 
+        scheduler, 
+        args
+    )
 
 if __name__ == '__main__':
     main()
