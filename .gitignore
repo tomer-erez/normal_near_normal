@@ -8,10 +8,12 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+.vscode/
 build/
 develop-eggs/
 dist/
 downloads/
+stanford_data/
 eggs/
 .eggs/
 lib/
