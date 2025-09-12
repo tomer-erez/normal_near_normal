@@ -23,6 +23,23 @@ def maybe_resume(model, optimizer, resume_path):
         return model, optimizer, start_epoch
     return model, optimizer, 0
 
+
+def describe_loaders(train_loader, val_loader, test_loader):
+    # Dataset sizes
+    print(f"Train size: {len(train_loader.dataset)}")
+    print(f"Val size:   {len(val_loader.dataset)}")
+    print(f"Test size:  {len(test_loader.dataset)}")
+
+
+    # Peek one batch from train loader
+    batch = next(iter(train_loader))
+    if isinstance(batch, (list, tuple)):
+        X, y = batch
+        print(f"Batch X shape: {X.shape}")
+        print(f"Batch y shape: {y.shape}")
+    else:
+        print(f"Batch shape: {batch.shape}")
+
 def generate_loaders(args,full_dataset):
     n = len(full_dataset)
     n_train = int(0.80 * n)
@@ -32,31 +49,15 @@ def generate_loaders(args,full_dataset):
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=args.batch_size)
     test_loader = DataLoader(test_set, batch_size=args.batch_size)
+    describe_loaders(train_loader, val_loader, test_loader) #print the shapes
     return train_loader,val_loader,test_loader
 
-
 def setup_output_file(args):
-
-    log_path = args.log_path
-
-    # Optional: remove file if you want, but opening in 'w' is enough
-    if os.path.exists(log_path):
-        os.remove(log_path)
-
-    # Open file in write mode with line buffering
-    log_file = open(log_path, "w", buffering=1)
-
-    # Redirect stdout
-    sys.stdout = log_file
-
-
     # Get current time in Israel
     israel_time = datetime.now(ZoneInfo("Asia/Jerusalem"))
-
     # Print in a readable format
     print("Current Israel time:", israel_time.strftime("%Y-%m-%d %H:%M:%S"))
     print()  # extra newline
-
     for key, value in vars(args).items():
         print(f"{key}: {value}")  # \n adds an extra newline between entries
 

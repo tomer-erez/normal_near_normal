@@ -74,8 +74,8 @@ class DummyCTDataset(Dataset):
         return self.length
 
     def __getitem__(self, idx):
-        image = torch.randn(1, 224, 224, 64)
-        label = torch.randint(0, 3, (1,)).item()
+        image = torch.randn(1, 40, 512, 512)
+        label = torch.randint(0, 1, (1,)).item()
         return image, label
     
 
@@ -139,7 +139,7 @@ class SinoCTDataset(Dataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         series_id = str(row["patient_id"])
-        label_idx = self._label_to_index(row.iloc[1])  # assumes label in 2nd column
+        label_idx = self._label_to_index(row["label"])  # assumes label in 2nd column
         folder = Path(row["series_folder"])
         dcm_paths = read_sorted_dcm_paths(folder)
         if len(dcm_paths) == 0:
