@@ -1,0 +1,11 @@
+1. 
+for training only take examples with 4 or more words
+train_text_augmented = train_df["text_augment"].astype(str).str.split().apply(len)
+short_texts = train_df[train_text == 3]["text_augment"]
+
+there are 500 examples of 3 words that look like:
+
+['Results: Impression:']
+--------------------------------------------------
+
+these wouldnt be helpful for training probably because how would we align it

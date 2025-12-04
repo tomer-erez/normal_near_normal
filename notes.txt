@@ -1,0 +1,7 @@
+When aligning chest X-ray images with their radiology reports, there’s an important trade-off between simplicity and correctness.
+The simplest approach is to treat each image view (AP, PA, Lateral) individually and pair it with the same report, which is easy to implement and works for pretraining or contrastive learning,
+ but introduces label noise because some findings may be view-specific and not visible in every image.
+ A more accurate approach is to group all views of the same study into a single tensor and align that tensor with the report, allowing the model to reason across views and avoid misalignment,
+ though this requires handling variable numbers of views (via padding or masking) and increases memory usage. Another alternative is to train separate models per view type,
+ ensuring that only relevant findings are associated with each view, but this reduces the amount of data per model and ignores multi-view correlations.
+The choice depends on the task: for general representation learning, single-image alignment may suffice, whereas for clinically sensitive applications, multi-view study-level alignment is preferred.
