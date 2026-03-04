@@ -83,6 +83,7 @@ docs/_build/
 # PyBuilder
 .pybuilder/
 target/
+cxr_data/
 
 # Jupyter Notebook
 .ipynb_checkpoints
