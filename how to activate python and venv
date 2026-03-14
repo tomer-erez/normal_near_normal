@@ -1,5 +1,0 @@
-tomererez@kitana:~/PycharmProjects/normal_near_normal$ source venv/bin/activate
-
-(venv) tomererez@kitana:~/PycharmProjects/normal_near_normal$ which python
-/home/tomererez/PycharmProjects/normal_near_normal/venv/bin/python
-

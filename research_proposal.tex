@@ -1,0 +1,173 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{float}
+\geometry{margin=1in}
+
+\title{Medical Image Retrieval from Free-Text Queries\\
+via CLIP-Style Vision--Language Alignment}
+\author{
+Tomer Erez\\
+\texttt{tomer.erez@campus.technion.ac.il}\\[6pt]
+Technion -- Israel Institute of Technology
+}
+\date{January 2026}
+
+\begin{document}
+
+% -------------------- Title page (full page) --------------------
+\begin{titlepage}
+    \centering
+    \vspace*{1.2in}
+
+    {\LARGE \textbf{Thesis Research Proposal}}\par
+    \vspace{0.25in}
+    {\Huge \textbf{Medical Image Retrieval from Free-Text Queries}}\par
+    \vspace{0.15in}
+    {\Large \textbf{via CLIP-Style Vision--Language Alignment}}\par
+
+    \vspace{0.8in}
+
+    {\Large Tomer Erez}\par
+    \vspace{0.1in}
+    {\large \texttt{tomer.erez@campus.technion.ac.il}}\par
+
+    \vspace{0.35in}
+
+    {\large Technion -- Israel Institute of Technology}\par
+    \vspace{0.08in}
+    {\large January 2026}\par
+
+    \vfill
+
+    \begin{flushleft}
+    \textbf{Advisor:} Prof. Ehud Rivlin\\
+    \textbf{Program:} Computer Science\\
+    Technion -- Israel Institute of Technology
+    \end{flushleft}
+
+\end{titlepage}
+
+% -------------------- Abstract (no citations; no quotes) --------------------
+\begin{abstract}
+Medical institutions store massive collections of medical images across modalities and departments, yet search and access are still often driven by partial metadata, manual tags, or study identifiers rather than by the actual visual content. At the same time, much of the clinically meaningful information is recorded in unstructured free text (for example radiology reports, clinical notes, and procedure summaries). This mismatch creates a practical retrieval problem: users naturally want to search for images using natural language descriptions of findings, but the relevant information is not organized as structured database fields.
+
+This research proposes to learn a joint representation space that aligns medical images with their associated text, enabling text-to-image retrieval by embedding similarity. The emphasis is on developing methods and evaluation protocols that reflect clinical realism, including multi-image studies, long and structured reports, and differences between clinical formats (DICOM) and typical machine-learning formats (JPG). In addition to retrieval performance, the learned representations will be assessed through clinically meaningful analyses and through downstream medical semantics tasks (for example pathology classification) used as complementary signals for model development and for understanding what is captured by the embedding space.
+\end{abstract}
+
+% -------------------- Introduction --------------------
+\section{Introduction}
+Medical imaging is central to modern healthcare, and hospitals accumulate large-scale archives containing radiographs, CT, MRI, ultrasound, and other modalities. These archives support clinical decision making, education, quality assurance, and retrospective research. However, despite their importance and scale, searching medical image repositories is often limited to metadata such as modality, body part, procedure codes, timestamps, or radiologist identifiers. Metadata alone rarely captures the clinically relevant content that users actually seek, such as specific findings, combinations of findings, severity, or contextual qualifiers (for example mild vs. severe, acute vs. chronic, improved vs. worsened).
+
+A major reason retrieval remains difficult is that clinically meaningful descriptions are commonly stored in free text rather than structured fields. Radiology reports, discharge summaries, and referral notes contain rich information, but the information is heterogeneous, varies across institutions, and includes uncertainty and negation. At the same time, the number of images is large, the visual patterns can be subtle, and many conditions share similar visual appearance. Together, these factors create an ``information organization'' gap: the most useful indexing signals are present, but they are not organized in a way that supports fast, accurate, natural-language search over images.
+
+The central goal of this research is to develop and study a retrieval system that enables free-text queries over medical images by learning aligned image and text embeddings. Rather than relying on keyword matching or manually curated tags, the system learns a shared representation in which semantically matched image--text pairs are close and mismatched pairs are far. This makes retrieval possible by approximate nearest-neighbor search over embeddings. The work emphasizes methodological clarity and clinically realistic evaluation: medical text is long and structured, many imaging studies have multiple images or views, and clinical image formats require careful preprocessing.
+
+\subsection*{Research questions}
+This research centers on the following research questions:
+\begin{itemize}
+    \item \textbf{Alignment and retrieval:} Can a CLIP-style (Contrastive Language--Image Pretraining: dual-encoder contrastive training that aligns image and text representations) framework be adapted to medical data so that free-text queries retrieve clinically relevant medical images with high precision and robustness?
+    \item \textbf{Clinical realism:} Which design choices are most important under realistic clinical constraints, including long structured reports, multi-image studies, and domain-specific image formats (DICOM: Digital Imaging and Communications in Medicine)?
+    \item \textbf{Generalization:} How well do learned retrieval representations transfer across datasets and institutions, and what factors improve or harm generalization beyond the training distribution?
+    \item \textbf{Medical semantics:} To what extent does improved retrieval reflect true medical understanding (clinical semantics) rather than superficial correlations, and how can complementary evaluations (for example pathology classification) help interpret failures and guide model development?
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.60\linewidth]{figures/mimic_cxr_example.png}
+    \caption{Example paired supervision from a radiology dataset(mimic-cxr): a medical imaging study and its associated report text.}
+    \label{fig:paired-example}
+\end{figure}
+
+% -------------------- Background and Related Work --------------------
+\section{Background and Related Work}
+The core training principle follows CLIP-style vision--language alignment \cite{radford2021clip}. In CLIP (Contrastive Language--Image Pretraining: a dual-encoder model trained with a contrastive objective), an image encoder maps an image to an embedding vector, and a text encoder maps a text input to an embedding vector. Training encourages matched image--text pairs to have higher similarity than mismatched pairs. At inference time, retrieval is simple: the free-text query is embedded by the text encoder, all database images (or studies) are embedded by the image encoder, and candidates are ranked by vector similarity.
+
+Medical data differs substantially from web-scale image--caption pairs. Medical images are specialized, and the associated text is longer, more structured, and includes clinically important qualifiers such as uncertainty, negation, and temporal comparisons. Recent work shows that adapting vision--language pretraining to biomedical and clinical data can improve transfer, for example through large biomedical image--text corpora \cite{zhang2023biomedclip} or architectures that incorporate domain structure \cite{bannur2023biovilt}. These directions motivate using contrastive alignment for medical retrieval, but they also highlight open practical questions about handling realistic report length, multi-image studies, and differences in acquisition protocols and report styles.
+
+Once embeddings are learned, practical retrieval requires indexing at scale. Approximate nearest-neighbor methods such as FAISS (a library for fast similarity search over large vector collections) \cite{johnson2017billionscalesimilaritysearchgpus} and HNSW (Hierarchical Navigable Small World graphs for approximate nearest-neighbor search) \cite{malkov2018efficientrobustapproximatenearest} are common choices.
+
+% -------------------- Methods --------------------
+\section{Methods}
+\subsection{Datasets and scope}
+The research targets \textbf{general medical image retrieval}, while using chest radiographs as a primary case study because they provide large-scale paired image--report supervision and established evaluation protocols. Experiments will primarily use MIMIC-CXR, which provides chest radiographs paired with free-text reports \cite{johnson2019mimiccxr}. Standardized preprocessing and commonly used label sets will use MIMIC-CXR-JPG \cite{johnson2019mimiccxrjpglargepubliclyavailable}. To test robustness and domain shifts beyond a single data source and reporting style, external transfer will be evaluated on other medical datasets (for example: PadChest \cite{Bustos_2020}). While these datasets are chest radiograph focused, they serve as a controlled environment to develop methods intended to generalize to other medical imaging domains where paired image--text supervision exists (for example other radiology modalities and procedure types).
+
+Data splits will be performed at the patient level when applicable to reduce leakage between training and evaluation.
+
+\subsection{Text processing under realistic report structure}
+A key challenge in medical retrieval is that the text supervision is not a short caption but a long, structured document. Reports will be parsed into sections (for example \textit{Findings} and \textit{Impression}). These sections differ in style and clinical function: findings are often closer to observable evidence, while impression summarizes clinically salient conclusions. The research will study how section choice affects retrieval and how different supervision signals change the learned embedding space.
+
+Long text will be handled with methods that avoid naive truncation. A baseline approach will chunk long sections into shorter spans, embed each chunk, and aggregate chunk embeddings into a single report embedding using learned pooling. In addition, long-context encoders and training recipes aimed at better grounding under realistic text length will be explored, including approaches such as TULIP (Token-Length Upgraded CLIP: methods designed to extend CLIP-style training to longer text) \cite{najdenkoska2025tuliptokenlengthupgradedclip}.
+
+\subsection{Image representation and clinically relevant preprocessing}
+Clinical images are commonly stored as DICOM, which encodes pixel values in modality-specific units and requires windowing or normalization for visualization. The research will compare:
+\begin{itemize}
+    \item A strong JPG-based pipeline (using standardized renderings such as MIMIC-CXR-JPG).
+    \item A DICOM-derived pipeline with controlled windowing and normalization, optionally using multiple windows to preserve clinically relevant detail.
+\end{itemize}
+The goal is to quantify how format and preprocessing affect alignment training and retrieval outcomes.
+
+In addition, retrieval will be defined at the \textbf{study level} rather than the single-image level when studies contain multiple images or views. Multi-image studies will be represented by embedding each image with a shared image encoder and fusing embeddings into a study representation (for example by pooling or learned fusion). This enables retrieval that returns clinically coherent study results instead of isolated images.
+
+\subsection{Alignment objectives and training}
+Training follows CLIP-style alignment.
+The evaluation will focus on retrieval quality and sensitivity to hyperparameters.
+
+The research will also consider integrating supervised signals when available as auxiliary objectives (for example pathology labels derived from reports). This is not intended to replace retrieval training, but to study whether auxiliary supervision improves medical semantics without sacrificing retrieval performance.
+
+\subsection{Retrieval indexing at scale}
+After training, all database studies will be embedded and indexed for approximate nearest-neighbor search. Indexing methods will include FAISS-style GPU-accelerated similarity search \cite{johnson2017billionscalesimilaritysearchgpus} and HNSW-style graph search \cite{malkov2018efficientrobustapproximatenearest}. Experiments will measure both retrieval accuracy metrics and practical metrics such as query latency. The intent is to produce a retrieval pipeline that is not only accurate but also feasible for interactive use over large archives.
+
+% -------------------- Evaluation --------------------
+\section{Evaluation}
+\subsection{Primary evaluation: text-to-image (or text-to-study) retrieval}
+The primary evaluation is retrieval from free-text queries to medical images or studies. Performance will be measured using standard retrieval metrics such as Recall@K and mean reciprocal rank. However, medical retrieval requires additional interpretation beyond aggregate metrics. The evaluation will include:
+\begin{itemize}
+    \item Analysis of hard cases where findings co-occur or have overlapping visual appearance.
+    \item Qualitative retrieval examples to assess clinical plausibility (retrieved studies should match the query in medically meaningful ways, not only in embedding similarity).
+    \item Error categorization (for example confusion between related findings, failure under negation, or failure under uncertainty language).
+\end{itemize}
+
+\subsection{Secondary evaluation: medical semantics via classification}
+Retrieval alignment models often encode useful medical semantics. Classification will be used as a complementary evaluation and as a development signal by:
+scoring images against short textual prompts describing conditions (CLIP-style zero-shot classification by similarity) \cite{radford2021clip}, and fine-tuning the image encoder (or the joint model) on available pathology labels while monitoring whether retrieval quality is preserved.
+
+\subsection{Generalization and robustness}
+Generalization will be evaluated by training on one dataset and testing on another when feasible (for example MIMIC-CXR to PadChest). Additional robustness checks will consider distribution shifts induced by differences in acquisition protocols, text style, and prevalence of conditions. Where possible, the research will examine whether improvements come from better visual grounding or from spurious shortcuts by inspecting retrieval examples and failure modes.
+
+% -------------------- Expected Contributions --------------------
+\section{Expected Contributions}
+The expected contributions of this research are:
+\begin{itemize}
+    \item \textbf{A benchmark for medical image retrieval under image--text alignment settings:}
+    a standardized evaluation protocol for free-text medical image retrieval using aligned vision--language embeddings, including clearly defined splits, retrieval metrics, and clinically grounded analyses (e.g., robustness to negation, uncertainty, and co-occurring findings).
+
+    \item \textbf{A fine-tuned vision--language model for medical retrieval:}
+    a trained and validated image--text alignment model optimized for medical retrieval, with documented design choices and evidence of generalization where applicable.
+
+    \item \textbf{A curated dataset for retrieval research:}
+    a curated set of image--text pairs and query definitions derived from existing medical datasets, including preprocessing and filtering choices that improve usability for retrieval experiments,  released in a form that supports reproducible benchmarking.
+\end{itemize}
+
+% -------------------- Research Plan --------------------
+\section{Research Plan}
+
+\paragraph{Short-term goals.}
+Build a reproducible data pipeline for medical image--text pairs, including dataset acquisition, patient-level splits, and reliable construction of study-level image--report pairs. Implement report parsing into sections and baseline preprocessing for long text. Establish loaders that support both standardized JPG inputs and DICOM-derived inputs with controlled windowing and normalization.
+
+\paragraph{Medium-term goals.}
+Train a strong baseline alignment model and conduct controlled comparisons that isolate core design choices: which report sections to use, how to handle long reports (chunking and long-context encoders). Use retrieval metrics and classification metrics as development signals to select and refine models.
+
+\paragraph{Long-term goals.}
+Build an end-to-end retrieval prototype by embedding the full archive and indexing it with approximate nearest-neighbor search. Evaluate the accuracy--latency tradeoff under realistic query settings and scale. Validate robustness through external transfer (for example PadChest) and provide qualitative retrieval examples and systematic error analysis that highlight the conditions and settings under which the retrieval system succeeds or fails.
+
+% -------------------- Bibliography --------------------
+\bibliographystyle{ieeetr}
+\bibliography{references}
+
+\end{document}
