@@ -1,0 +1,291 @@
+================================================================================
+ MIMIC-CXR CLIP FINE-TUNING GUIDE
+================================================================================
+
+GOAL
+----
+Fine-tune CLIP models to align chest X-ray images with CheXpert label text
+(e.g. "atelectasis", "fracture and edema") so that text→image retrieval
+improves over the baselines (vanilla CLIP, BiomedCLIP, CXR-CLIP).
+
+The eval queries are label strings — not radiology reports — so we train
+with label-based captions to match that distribution.
+
+
+================================================================================
+ OVERVIEW
+================================================================================
+
+  1. Build test gallery    (once)     build_baseline.py
+  2. Train a model                    train_lora.py  (or use the shell scripts)
+  3. Eval a single model              eval_model.py
+  4. Eval all models + compare        run_all_evals.py
+
+
+================================================================================
+ STEP 1 — BUILD THE TEST IMAGE GALLERY (run once)
+================================================================================
+
+python baseline_eval/build_baseline.py --csv cxr_data/mimic_cxr_official_test.csv --image_dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/ --output_dir ./eval_outputs/exp1
+
+Creates symlinks for the 5,159 official test images in:
+  ./eval_outputs/exp1/paired_data/
+
+This is the gallery all models are evaluated against. Only needs to be built once.
+
+
+================================================================================
+ STEP 2 — TRAINING
+================================================================================
+
+Script: train_lora.py
+What it does:
+  - Loads a base CLIP model (vanilla or BiomedCLIP)
+  - Applies LoRA adapters (~1.6-1.9% of params trainable)
+  - Trains on mimic_cxr_train.csv using CheXpert label captions
+  - Saves adapter checkpoints each epoch + a merged final model for eval
+
+--------------------------------------------------------------------------------
+ RECOMMENDED: RUN WITH TMUX (survives SSH disconnects)
+--------------------------------------------------------------------------------
+
+Each model has its own script that logs to logs/vanilla.log or logs/biomed.log.
+
+  # Vanilla CLIP on GPU 0:
+  tmux new -s vanilla
+  bash train_vanilla.sh
+  # Detach: Ctrl+B then D
+  # Re-attach: tmux attach -t vanilla
+  # Watch log from another terminal: tail -f logs/vanilla.log
+
+  # BiomedCLIP on GPU 1 (in a separate tmux window):
+  tmux new -s biomed
+  bash train_biomed.sh
+  # Detach: Ctrl+B then D
+  # Re-attach: tmux attach -t biomed
+  # Watch log from another terminal: tail -f logs/biomed.log
+
+  # List all tmux sessions:
+  tmux ls
+
+  # Kill a session when done:
+  tmux kill-session -t vanilla
+
+--------------------------------------------------------------------------------
+ FIXED PARAMS PER MODEL (do not change — these are tested to fit on 11GB)
+--------------------------------------------------------------------------------
+
+  Model          Script             GPU  Batch  Grad Accum  Effective Batch
+  -------------  -----------------  ---  -----  ----------  ---------------
+  Vanilla CLIP   train_vanilla.sh   0    128    1           128
+  BiomedCLIP     train_biomed.sh    1    32     2           64
+
+  BiomedCLIP needs batch-size 32 + grad-accum-steps 2 to fit in 11GB VRAM.
+  Batch 64 and above OOMs.
+
+--------------------------------------------------------------------------------
+ CAPTION MODES  (--caption-mode)
+--------------------------------------------------------------------------------
+
+  single   Each image paired with one random positive label
+           e.g. "atelectasis"
+
+  pair     Each image paired with two random positive labels
+           e.g. "fracture and edema"
+
+  both     (default) Randomly picks single or pair each sample
+           Best option — trains for both query types the eval uses
+
+--------------------------------------------------------------------------------
+ SUPPORTED BASE MODELS
+--------------------------------------------------------------------------------
+
+  Model            --base-model arg                                                     --pretrained  --lora-modules
+  ---------------  -------------------------------------------------------------------  ------------  ------------------------------------------
+  Vanilla CLIP     ViT-B-32                                                             openai        in_proj,out_proj,c_fc,c_proj  (default)
+  BiomedCLIP       hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224     (omit)        qkv,proj,fc1,fc2,query,key,value
+                   Note: the script auto-resolves ambiguous names (e.g. proj also
+                   matches Conv2d/Sequential) to parent.leaf suffixes like attn.proj
+
+--------------------------------------------------------------------------------
+ KEY TRAINING OPTIONS
+--------------------------------------------------------------------------------
+
+  --epochs           Number of training epochs (default: 10)
+  --batch-size       Batch size per step (default: 8)
+  --grad-accum-steps Gradient accumulation steps (default: 1)
+                     Effective batch = batch-size * grad-accum-steps
+  --lr               Learning rate (default: 1e-4)
+  --max-samples      Cap dataset size — useful for quick tests
+  --caption-mode     single | pair | both (default: both)
+  --lora-r           LoRA rank (default: 16, higher = more capacity)
+  --lora-alpha       LoRA alpha (default: 32)
+  --lora-target      image | text | both — which encoder(s) to LoRA (default: both)
+  --save-frequency   Save adapter checkpoint every N epochs (default: 1)
+  --precision        fp16 | bf16 | fp32 (default: fp16)
+  --resume           Path to a previous adapter .pt to continue from
+  --seed             Random seed (default: 42)
+
+--------------------------------------------------------------------------------
+ OUTPUTS
+--------------------------------------------------------------------------------
+
+  experiments/<name>/epoch_N_adapter.pt   LoRA adapter weights only (small, ~11MB)
+  experiments/<name>/final_merged.pt      Full merged model for eval (used by eval script)
+  logs/vanilla.log                        Training log for vanilla CLIP
+  logs/biomed.log                         Training log for BiomedCLIP
+
+--------------------------------------------------------------------------------
+ MANUAL TRAINING COMMANDS (if you prefer not to use the scripts)
+--------------------------------------------------------------------------------
+
+# Smoke-test (fast, verify it works)
+CUDA_VISIBLE_DEVICES=0 python train_lora.py --base-model ViT-B-32 --pretrained openai --train-csv cxr_data/mimic_cxr_train.csv --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/ --output-dir ./experiments/lora_smoke --epochs 3 --max-samples 5000 --batch-size 64
+
+# Full training — vanilla CLIP ViT-B-32  (GPU 0)
+CUDA_VISIBLE_DEVICES=0 python train_lora.py --base-model ViT-B-32 --pretrained openai --train-csv cxr_data/mimic_cxr_train.csv --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/ --output-dir ./experiments/lora_vitb32 --batch-size 128 --epochs 10
+
+# Full training — BiomedCLIP  (GPU 1, batch-size 32 + grad-accum 2 to avoid OOM)
+CUDA_VISIBLE_DEVICES=1 python train_lora.py --base-model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 --train-csv cxr_data/mimic_cxr_train.csv --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/ --output-dir ./experiments/lora_biomedclip --batch-size 32 --grad-accum-steps 2 --epochs 10 --lora-modules "qkv,proj,fc1,fc2,query,key,value"
+
+# Resume from a checkpoint
+CUDA_VISIBLE_DEVICES=0 python train_lora.py --base-model ViT-B-32 --pretrained openai --train-csv cxr_data/mimic_cxr_train.csv --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/ --output-dir ./experiments/lora_vitb32 --resume ./experiments/lora_vitb32/epoch_5_adapter.pt --batch-size 128
+
+# Train image encoder only (text encoder frozen)
+CUDA_VISIBLE_DEVICES=0 python train_lora.py --base-model ViT-B-32 --pretrained openai --train-csv cxr_data/mimic_cxr_train.csv --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/ --output-dir ./experiments/lora_vitb32_imgonly --lora-target image --batch-size 128
+
+
+================================================================================
+ STEP 3 — EVALUATE A SINGLE MODEL
+================================================================================
+
+Script: baseline_eval/eval_model.py
+What it does:
+  - Encodes all images in the test gallery
+  - Encodes 105 text queries (13 single labels + 78 two-label pairs, no Support Devices)
+  - Retrieves top-k images per query by cosine similarity
+  - Reports P@1, P@5, P@10 and R@1, R@5, R@10
+
+--------------------------------------------------------------------------------
+ MODEL TYPES  (--model_type)
+--------------------------------------------------------------------------------
+
+  vanilla_clip   OpenAI ViT-B/32 — no extra args needed
+  biomedclip     Microsoft BiomedCLIP — no extra args needed
+  cxrclip        CXR-CLIP checkpoint — requires --cxrclip_checkpoint
+  finetuned      Our trained model — requires --finetuned_base_model,
+                 --finetuned_pretrained, --finetuned_checkpoint
+
+--------------------------------------------------------------------------------
+ EVAL COMMANDS
+--------------------------------------------------------------------------------
+
+# Eval our fine-tuned ViT-B-32
+python baseline_eval/eval_model.py --model_type finetuned --name lora_vitb32 --finetuned_base_model ViT-B-32 --finetuned_pretrained openai --finetuned_checkpoint ./experiments/lora_vitb32/final_merged.pt --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv
+
+# Eval our fine-tuned BiomedCLIP
+python baseline_eval/eval_model.py --model_type finetuned --name lora_biomedclip --finetuned_base_model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 --finetuned_checkpoint ./experiments/lora_biomedclip/final_merged.pt --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv
+
+# Eval vanilla CLIP baseline
+python baseline_eval/eval_model.py --model_type vanilla_clip --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv
+
+# Eval BiomedCLIP baseline
+python baseline_eval/eval_model.py --model_type biomedclip --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv
+
+
+================================================================================
+ STEP 4 — EVALUATE ALL MODELS AND COMPARE
+================================================================================
+
+Script: baseline_eval/run_all_evals.py
+What it does:
+  - Runs eval_model.py for every model in the MODELS list
+  - Produces summary CSVs and comparison plots
+
+To add a fine-tuned model to the comparison, uncomment/add an entry in
+the MODELS list in baseline_eval/run_all_evals.py:
+
+  {
+      "name": "lora_vitb32",
+      "model_type": "finetuned",
+      "checkpoint": None,
+      "finetuned_base_model": "ViT-B-32",
+      "finetuned_pretrained": "openai",
+      "finetuned_checkpoint": "experiments/lora_vitb32/final_merged.pt",
+  },
+
+--------------------------------------------------------------------------------
+ EVAL ALL COMMANDS
+--------------------------------------------------------------------------------
+
+# Run all models, save results + plots
+python baseline_eval/run_all_evals.py --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv --output_dir ./experiments/my_exp1 --batch_size 64
+
+# Skip models already evaluated (results CSV exists)
+python baseline_eval/run_all_evals.py --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv --output_dir ./experiments/my_exp1 --batch_size 64 --skip_existing
+
+# Run on a specific GPU
+CUDA_VISIBLE_DEVICES=2 python baseline_eval/run_all_evals.py --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv --output_dir ./experiments/my_exp1 --batch_size 64
+
+
+================================================================================
+ OUTPUTS FROM EVAL
+================================================================================
+
+  summary_single.csv   P@k / R@k per model for each single-label query
+  summary_pair.csv     P@k / R@k per model for each 2-label query
+  summary_macro.csv    Macro-averaged metrics per model (one row per model)
+  plots/               Heatmaps and bar charts comparing all models
+
+
+================================================================================
+ STEP 5 — INTERACTIVE RETRIEVAL EXPLORER
+================================================================================
+
+Script: baseline_eval/explorer.py
+What it does:
+  - Loads all cached image embeddings from a previous eval run
+  - Starts a local web server where you can type any free-form query and see
+    what every model retrieves side-by-side
+  - Each result shows the CXR thumbnail, similarity score, and CheXpert labels
+    (green = positive, orange = uncertain) so you can judge relevance at a glance
+  - Click any image to see it full-size with the radiology report
+
+--------------------------------------------------------------------------------
+ COMMAND
+--------------------------------------------------------------------------------
+
+# Start the explorer (one-liner from repo root):
+conda run -n clip_mimic python baseline_eval/explorer.py --paired_dir eval_outputs/exp1/paired_data --emb_dir eval_outputs/exp1 --csv cxr_data/all_txt_data_and_labels.csv --port 5050
+
+  --paired_dir   Folder with *.jpg images (same one used for eval)
+  --emb_dir      Directory containing the img_emb_*.npy cache files
+                 (same directory as --output_dir in run_all_evals.py)
+  --csv          all_txt_data_and_labels.csv (for CheXpert labels)
+  --port         Port to serve on (default: 5050)
+
+NOTE: requires that eval has been run first so that the *.npy embedding
+      cache files exist in --emb_dir. Models with no matching .npy are
+      skipped automatically.
+
+--------------------------------------------------------------------------------
+ ACCESSING FROM AN SSH SESSION
+--------------------------------------------------------------------------------
+
+You need SSH port forwarding to open the browser on your local machine.
+Add -L to your ssh command when connecting:
+
+  ssh -L 5050:localhost:5050 <user@host>
+
+Then start the server on the remote machine and open http://localhost:5050
+in your local browser.
+
+If you already have an SSH session open, press ~C in the terminal, then type:
+  -L 5050:localhost:5050
+
+
+================================================================================
+ IMAGE DIR (for reference)
+================================================================================
+
+/mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/

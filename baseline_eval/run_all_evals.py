@@ -1,0 +1,344 @@
+"""
+Run retrieval evaluation for all models sequentially, then summarize results
+into comparison tables and plots.
+
+Output files (in repo root):
+  summary_single.csv  — P@k / R@k per model for each single CheXpert label
+  summary_pair.csv    — P@k / R@k per model for each 2-label combination
+  summary_macro.csv   — macro-averaged metrics per model (one row per model)
+  plots/              — comparison charts
+
+Usage
+-----
+    python baseline/run_all_evals.py \
+        --paired_dir ./baseline_output/paired_data \
+        --csv        cxr_data/all_txt_data_and_labels.csv
+
+    # Skip models already evaluated (results CSV exists):
+    python baseline/run_all_evals.py ... --skip_existing
+"""
+
+import argparse
+import logging
+import subprocess
+import sys
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+import numpy as np
+import pandas as pd
+import seaborn as sns
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger(__name__)
+
+REPO_ROOT = Path(__file__).parent.parent
+CHECKPOINTS_DIR = REPO_ROOT / "more_models_to_try"
+
+MODELS = [
+    {"name": "vanilla_clip",  "model_type": "vanilla_clip",  "checkpoint": None},
+    {"name": "biomedclip",    "model_type": "biomedclip",    "checkpoint": None},
+    # {"name": "cxrclip_r50_m",   "model_type": "cxrclip", "checkpoint": "r50_m.pt"},
+    {"name": "cxrclip_r50_mc",  "model_type": "cxrclip", "checkpoint": "r50_mc.pt"},
+    # {"name": "cxrclip_r50_mcc", "model_type": "cxrclip", "checkpoint": "r50_mcc.pt"},
+    # {"name": "cxrclip_swint_m",   "model_type": "cxrclip", "checkpoint": "swint_m.pt"},
+    {"name": "cxrclip_swint_mc",  "model_type": "cxrclip", "checkpoint": "swint_mc.pt"},
+    # {"name": "cxrclip_swint_mcc", "model_type": "cxrclip", "checkpoint": "swint_mcc.pt"},
+    # Fine-tuned models — add entries here after training. Example:
+
+    {
+        "name": "lora_vitb32_vanilla_clip",
+        "model_type": "finetuned",
+        "checkpoint": None,  # unused for finetuned; path comes from finetuned_checkpoint
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "openai",
+        "finetuned_checkpoint": "experiments/lora_vitb32_with_5_ep/final_merged.pt",
+    },
+    {
+        "name": "lora_biomedclip",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/lora_biomedclip_with_5_ep/final_merged.pt",
+    },
+]
+
+KS = [1, 5, 10]
+METRIC_COLS = [f"P@{k}" for k in KS] + [f"R@{k}" for k in KS]
+
+
+def results_path(model: dict) -> Path:
+    if model["model_type"] == "finetuned":
+        return REPO_ROOT / f"results_{model['name']}.csv"
+    if model["checkpoint"]:
+        stem = Path(model["checkpoint"]).stem
+        return REPO_ROOT / f"results_cxrclip_{stem}.csv"
+    return REPO_ROOT / f"results_{model['model_type']}.csv"
+
+
+def run_eval(model: dict, paired_dir: str, csv: str, batch_size: int = 64) -> Path:
+    """Run eval_model.py for one model. Returns path to results CSV."""
+    cmd = [
+        sys.executable, str(REPO_ROOT / "baseline_eval" / "eval_model.py"),
+        "--model_type", model["model_type"],
+        "--name", model["name"],
+        "--paired_dir", paired_dir,
+        "--csv", csv,
+        "--batch_size", str(batch_size),
+    ]
+    if model["checkpoint"]:
+        cmd += ["--cxrclip_checkpoint", str(CHECKPOINTS_DIR / model["checkpoint"])]
+    if model["model_type"] == "finetuned":
+        cmd += [
+            "--finetuned_base_model", model["finetuned_base_model"],
+            "--finetuned_pretrained", model.get("finetuned_pretrained", ""),
+            "--finetuned_checkpoint", str(REPO_ROOT / model["finetuned_checkpoint"]),
+        ]
+
+    log.info(f"Running: {' '.join(cmd)}")
+    subprocess.run(cmd, check=True)
+    return results_path(model)
+
+
+def build_summary(all_results: dict[str, pd.DataFrame], qtype: str) -> pd.DataFrame:
+    """
+    Build a wide summary DataFrame for one query type (single or pair).
+
+    Rows = queries, Columns = (model, metric) multi-index.
+    Also includes n_relevant (same across models, taken from first model).
+    """
+    model_names = list(all_results.keys())
+    first_df = all_results[model_names[0]]
+    subset = first_df[first_df["type"] == qtype][["query", "n_relevant"]].reset_index(drop=True)
+
+    for model_name, df in all_results.items():
+        model_subset = df[df["type"] == qtype][["query"] + METRIC_COLS].reset_index(drop=True)
+        for col in METRIC_COLS:
+            subset[f"{model_name}_{col}"] = model_subset[col].values
+
+    return subset
+
+
+def build_macro_summary(all_results: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """One row per model, macro-averaged metrics for single and pair queries."""
+    rows = []
+    for model_name, df in all_results.items():
+        row = {"model": model_name}
+        for qtype in ["single", "pair"]:
+            subset = df[(df["type"] == qtype) & (df["n_relevant"] > 0)]
+            for col in METRIC_COLS:
+                row[f"{qtype}_{col}"] = subset[col].mean()
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
+    plots_dir.mkdir(parents=True, exist_ok=True)
+    model_names = list(all_results.keys())
+    short_names = [m.replace("cxrclip_", "").replace("vanilla_clip", "vanilla") for m in model_names]
+
+    # ── 1. Heatmaps: P@10 and R@10 per label per model (single queries) ───────
+    for metric in ["P@10", "R@10"]:
+        labels = all_results[model_names[0]]
+        labels = labels[labels["type"] == "single"]["query"].tolist()
+
+        matrix = np.array([
+            all_results[m][all_results[m]["type"] == "single"][metric].values
+            for m in model_names
+        ])  # (n_models, n_labels)
+
+        fig, ax = plt.subplots(figsize=(max(14, len(labels) * 0.9), max(7, len(model_names) * 0.8)))
+        sns.heatmap(
+            matrix,
+            xticklabels=labels,
+            yticklabels=short_names,
+            annot=True, fmt=".2f",
+            cmap="YlOrRd",
+            vmin=0, vmax=1,
+            linewidths=0.5,
+            ax=ax,
+        )
+        ax.set_title(f"{metric} per label — single label queries", fontsize=13, pad=12)
+        ax.set_xlabel("CheXpert label")
+        ax.set_ylabel("Model")
+        plt.xticks(rotation=35, ha="right", fontsize=9)
+        plt.tight_layout()
+        path = plots_dir / f"heatmap_single_{metric.replace('@','at')}.png"
+        fig.savefig(path, dpi=150)
+        plt.close(fig)
+        log.info(f"Saved → {path}")
+
+    # ── 2. Macro bar chart: single label queries ───────────────────────────────
+    for qtype in ["single", "pair"]:
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+        fig.suptitle(f"Macro-averaged metrics — {qtype} label queries", fontsize=13)
+
+        x = np.arange(len(model_names))
+        width = 0.25
+
+        for ax, prefix, metrics in [
+            (axes[0], "P", ["P@1", "P@5", "P@10"]),
+            (axes[1], "R", ["R@1", "R@5", "R@10"]),
+        ]:
+            for i, metric in enumerate(metrics):
+                vals = [macro_summary.loc[macro_summary["model"] == m, f"{qtype}_{metric}"].values[0]
+                        for m in model_names]
+                bars = ax.bar(x + i * width, vals, width, label=metric)
+                for bar, val in zip(bars, vals):
+                    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.005,
+                            f"{val:.2f}", ha="center", va="bottom", fontsize=7)
+
+            ax.set_xticks(x + width)
+            ax.set_xticklabels(short_names, rotation=30, ha="right", fontsize=9)
+            ax.set_ylabel(f"{'Precision' if prefix == 'P' else 'Recall'} @ k")
+            ax.set_ylim(0, min(1.0, ax.get_ylim()[1] * 1.15))
+            ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.2f"))
+            ax.legend(fontsize=9)
+            ax.grid(axis="y", alpha=0.3)
+
+        plt.tight_layout()
+        path = plots_dir / f"macro_bar_{qtype}.png"
+        fig.savefig(path, dpi=150)
+        plt.close(fig)
+        log.info(f"Saved → {path}")
+
+    # ── 3. Per-label grouped bar: P@10 for each label, bars = models ──────────
+    for metric in ["P@10", "R@10"]:
+        labels = all_results[model_names[0]]
+        labels = labels[labels["type"] == "single"]["query"].tolist()
+        n_labels = len(labels)
+        n_models = len(model_names)
+        width = 0.8 / n_models
+        x = np.arange(n_labels)
+
+        fig, ax = plt.subplots(figsize=(max(14, n_labels * 1.0), 5))
+        for i, (m, short) in enumerate(zip(model_names, short_names)):
+            vals = all_results[m][all_results[m]["type"] == "single"][metric].values
+            ax.bar(x + i * width - 0.4 + width / 2, vals, width, label=short)
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, rotation=35, ha="right", fontsize=9)
+        ax.set_ylabel(metric)
+        ax.set_title(f"{metric} per label — all models", fontsize=13)
+        ax.set_ylim(0, 1.0)
+        ax.legend(fontsize=8, ncol=min(n_models, 4))
+        ax.grid(axis="y", alpha=0.3)
+        plt.tight_layout()
+        path = plots_dir / f"per_label_{metric.replace('@','at')}.png"
+        fig.savefig(path, dpi=150)
+        plt.close(fig)
+        log.info(f"Saved → {path}")
+
+    # ── 4. Precision-Recall @ k curve (macro, single labels) ──────────────────
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    fig.suptitle("Macro P@k and R@k curves — single label queries", fontsize=13)
+
+    for ax, prefix in [(axes[0], "P"), (axes[1], "R")]:
+        for m, short in zip(model_names, short_names):
+            vals = [macro_summary.loc[macro_summary["model"] == m, f"single_{prefix}@{k}"].values[0]
+                    for k in KS]
+            ax.plot(KS, vals, marker="o", label=short)
+        ax.set_xlabel("k")
+        ax.set_ylabel(f"{'Precision' if prefix == 'P' else 'Recall'} @ k")
+        ax.set_xticks(KS)
+        ax.legend(fontsize=8)
+        ax.grid(alpha=0.3)
+
+    plt.tight_layout()
+    path = plots_dir / "pk_rk_curves_single.png"
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    log.info(f"Saved → {path}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Run all model evaluations and produce summary CSVs",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    parser.add_argument("--paired_dir", required=True)
+    parser.add_argument("--csv", required=True)
+    parser.add_argument("--output_dir", required=True,
+                        help="Directory to store all results CSVs and plots for this experiment")
+    parser.add_argument("--skip_existing", action="store_true",
+                        help="Skip models whose results CSV already exists")
+    parser.add_argument("--batch_size", type=int, default=64,
+                        help="Batch size for image and text encoding (default: 64)")
+    args = parser.parse_args()
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # ── Run evaluations ───────────────────────────────────────────────────────
+    all_results = {}
+    for i,model in enumerate(MODELS):
+        print("\n" + "=" * 80)
+        log.info(f"Evaluating model {i+1}/{len(MODELS)}: {model['name']}")
+        out_path = output_dir / results_path(model).name
+
+        if args.skip_existing and out_path.exists():
+            log.info(f"Skipping {model['name']} — results already exist at {out_path}")
+        else:
+            checkpoint_file = CHECKPOINTS_DIR / model["checkpoint"] if model["checkpoint"] else None
+            if model["checkpoint"] and not checkpoint_file.exists():
+                log.warning(f"Checkpoint not found, skipping {model['name']}: {checkpoint_file}")
+                continue
+            try:
+                raw_path = run_eval(model, args.paired_dir, args.csv, args.batch_size)
+                # move result into experiment output_dir
+                if raw_path.exists() and raw_path != out_path:
+                    raw_path.rename(out_path)
+            except Exception as e:
+                log.error(f"Failed to evaluate {model['name']}: {e}")
+                continue
+
+        if out_path.exists():
+            all_results[model["name"]] = pd.read_csv(out_path)
+        else:
+            log.warning(f"No results file found for {model['name']}, skipping from summary")
+
+    if not all_results:
+        log.error("No results to summarize.")
+        return
+
+    # ── Build and save summaries ──────────────────────────────────────────────
+    single_summary = build_summary(all_results, "single")
+    pair_summary   = build_summary(all_results, "pair")
+    macro_summary  = build_macro_summary(all_results)
+
+    single_path = output_dir / "summary_single.csv"
+    pair_path   = output_dir / "summary_pair.csv"
+    macro_path  = output_dir / "summary_macro.csv"
+
+    single_summary.to_csv(single_path, index=False)
+    pair_summary.to_csv(pair_path, index=False)
+    macro_summary.to_csv(macro_path, index=False)
+
+    log.info(f"Saved → {single_path}")
+    log.info(f"Saved → {pair_path}")
+    log.info(f"Saved → {macro_path}")
+
+    # ── Generate plots ────────────────────────────────────────────────────────
+    plots_dir = output_dir / "plots"
+    make_plots(all_results, macro_summary, plots_dir)
+
+    # ── Print macro summary table ─────────────────────────────────────────────
+    print("\n" + "=" * 80)
+    print("MACRO SUMMARY — single label queries")
+    print("=" * 80)
+    single_cols = ["model"] + [f"single_{c}" for c in METRIC_COLS]
+    print(macro_summary[single_cols].to_string(index=False, float_format=lambda x: f"{x:.4f}"))
+
+    print("\n" + "=" * 80)
+    print("MACRO SUMMARY — 2-label pair queries")
+    print("=" * 80)
+    pair_cols = ["model"] + [f"pair_{c}" for c in METRIC_COLS]
+    print(macro_summary[pair_cols].to_string(index=False, float_format=lambda x: f"{x:.4f}"))
+    print()
+
+
+if __name__ == "__main__":
+    main()
