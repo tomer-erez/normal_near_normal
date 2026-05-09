@@ -8,13 +8,21 @@ Supported base models:
 Saves a merged (LoRA absorbed) checkpoint at the end: {output_dir}/final_merged.pt
 This can be loaded by baseline_eval/eval_model.py with --model_type finetuned.
 
-Usage
------
+Single-GPU usage
+----------------
 python train_lora.py \
     --base-model ViT-B-32 --pretrained openai \
     --train-csv cxr_data/mimic_cxr_train.csv \
     --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/ \
     --output-dir ./experiments/lora_vitb32
+
+Multi-GPU usage (torchrun)
+--------------------------
+torchrun --nproc_per_node=4 train_lora.py \
+    --base-model ViT-B-32 --pretrained openai \
+    --train-csv cxr_data/mimic_cxr_train.csv \
+    --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/ \
+    --output-dir ./experiments/lora_vitb32_4gpu
 
 # Quick smoke-test:
 python train_lora.py \
@@ -28,12 +36,15 @@ python train_lora.py \
 import argparse
 import logging
 import math
+import os
 import sys
 from pathlib import Path
 
 import torch
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data import DataLoader, random_split
+from torch.utils.data.distributed import DistributedSampler
 
 sys.path.insert(0, str(Path(__file__).parent / "open_clip" / "src"))
 import open_clip
@@ -43,6 +54,29 @@ from train.cxr_label_dataset import CXRLabelDataset
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
+
+
+# ── Distributed helpers ───────────────────────────────────────────────────────
+
+def setup_distributed():
+    """
+    Initialize DDP when launched via torchrun (LOCAL_RANK is set).
+    Returns (local_rank, rank, world_size, is_main).
+    When running single-GPU, all values are 0/1/True.
+    """
+    if "LOCAL_RANK" not in os.environ:
+        return 0, 0, 1, True
+    local_rank = int(os.environ["LOCAL_RANK"])
+    dist.init_process_group(backend="nccl")
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    torch.cuda.set_device(local_rank)
+    return local_rank, rank, world_size, rank == 0
+
+
+def _raw_model(model):
+    """Unwrap DDP to get the underlying peft model."""
+    return model.module if isinstance(model, DDP) else model
 
 
 # ── Args ──────────────────────────────────────────────────────────────────────
@@ -61,6 +95,11 @@ def parse_args():
     # Data
     p.add_argument("--train-csv", required=True)
     p.add_argument("--image-dir", required=True)
+    p.add_argument("--val-csv", default=None,
+                   help="Separate validation CSV. If omitted, --val-split is used instead.")
+    p.add_argument("--val-split", type=float, default=0.05,
+                   help="Fraction of training data held out for validation when --val-csv is not given. "
+                        "Set to 0 to disable validation entirely.")
     p.add_argument("--caption-mode", default="both", choices=["single", "pair", "both"])
     p.add_argument("--max-samples", type=int, default=None,
                    help="Cap dataset size (useful for debugging)")
@@ -75,16 +114,27 @@ def parse_args():
     # Training
     p.add_argument("--output-dir", required=True)
     p.add_argument("--epochs", type=int, default=10)
-    p.add_argument("--batch-size", type=int, default=8)
+    p.add_argument("--batch-size", type=int, default=8,
+                   help="Per-GPU batch size. Effective batch = batch-size * grad-accum-steps * world-size")
     p.add_argument("--lr", type=float, default=1e-4)
+    p.add_argument("--min-lr", type=float, default=1e-7,
+                   help="Minimum LR floor for cosine schedule")
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--grad-accum-steps", type=int, default=1,
-                   help="Gradient accumulation steps (effective batch = batch-size * steps)")
+                   help="Gradient accumulation steps")
     p.add_argument("--save-frequency", type=int, default=1,
                    help="Save adapter checkpoint every N epochs")
     p.add_argument("--precision", default="fp16", choices=["fp32", "fp16", "bf16"])
     p.add_argument("--resume", default=None, help="Path to adapter .pt to resume from")
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--report-interval-steps", type=int, default=500,
+                   help="Interval (in steps) for reporting training loss during epoch")
+    # Scheduler
+    p.add_argument("--scheduler", default="cosine", choices=["cosine", "plateau"],
+                   help="LR scheduler. 'plateau' reduces LR when val loss stagnates.")
+    # Early stopping
+    p.add_argument("--patience", type=int, default=5,
+                   help="Early stopping patience in epochs (0 to disable)")
     return p.parse_args()
 
 
@@ -106,11 +156,9 @@ def _get_target_modules(model, lora_module_names: list[str], lora_target: str) -
     for name, module in model.named_modules():
         if not isinstance(module, torch.nn.Linear):
             continue
-        # Check encoder scope
         in_scope = any(name.startswith(pfx) for pfx in encoder_prefix)
         if not in_scope:
             continue
-        # Check module suffix
         leaf = name.split(".")[-1]
         if any(leaf == m or name.endswith(f".{m}") for m in lora_module_names):
             targets.append(name)
@@ -164,10 +212,7 @@ def apply_lora(model, args):
     )
     model = get_peft_model(model, config)
 
-    # If targeting only one encoder, freeze LoRA params in the other
     if args.lora_target != "both":
-        freeze_prefix = "base_model.model.visual." if args.lora_target == "text" else None
-        unfreeze_prefix = "base_model.model.visual." if args.lora_target == "image" else None
         for name, param in model.named_parameters():
             if "lora_" in name:
                 if args.lora_target == "image":
@@ -179,22 +224,24 @@ def apply_lora(model, args):
     return model
 
 
-# ── Training ──────────────────────────────────────────────────────────────────
+# ── Training / evaluation ─────────────────────────────────────────────────────
 
-def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch, amp_dtype, grad_accum_steps=1, total_epochs=10):
+def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch,
+                    amp_dtype, total_epochs, report_interval_steps, grad_accum_steps=1,
+                    is_main=True):
     model.train()
+    raw = _raw_model(model)
     total_loss = 0.0
     optimizer.zero_grad()
+
     for step, (images, texts) in enumerate(loader):
-        # print(texts.shape)
-        # print(images.shape)
         images = images.to(device)
         texts = texts.to(device)
 
         with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=(amp_dtype is not None)):
-            image_features = model.encode_image(images, normalize=True)
-            text_features = model.encode_text(texts, normalize=True)
-            logit_scale = model.logit_scale.exp()
+            image_features = raw.encode_image(images, normalize=True)
+            text_features = raw.encode_text(texts, normalize=True)
+            logit_scale = raw.logit_scale.exp()
             loss = loss_fn(image_features, text_features, logit_scale)
             loss = loss / grad_accum_steps
 
@@ -219,24 +266,71 @@ def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch, am
             optimizer.zero_grad()
 
             with torch.no_grad():
-                model.logit_scale.clamp_(0, math.log(100))
+                raw.logit_scale.clamp_(0, math.log(100))
 
         total_loss += loss.item() * grad_accum_steps
-        if step % 250 == 0:
-            log.info(f"  epoch {epoch}/{total_epochs} step {step}/{len(loader)}  loss={loss.item() * grad_accum_steps:.4f}")
+        if is_main and step % report_interval_steps == 0:
+            log.info(
+                f"  epoch {epoch}/{total_epochs} step {step}/{len(loader)}"
+                f"  loss={loss.item() * grad_accum_steps:.4f}"
+            )
 
     return total_loss / len(loader)
 
 
+@torch.no_grad()
+def eval_one_epoch(model, loader, loss_fn, device, amp_dtype):
+    model.eval()
+    raw = _raw_model(model)
+    total_loss = 0.0
+    for images, texts in loader:
+        images = images.to(device)
+        texts = texts.to(device)
+        with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=(amp_dtype is not None)):
+            image_features = raw.encode_image(images, normalize=True)
+            text_features = raw.encode_text(texts, normalize=True)
+            logit_scale = raw.logit_scale.exp()
+            loss = loss_fn(image_features, text_features, logit_scale)
+        total_loss += loss.item()
+    return total_loss / len(loader)
+
+
+# ── Early stopping ────────────────────────────────────────────────────────────
+
+class EarlyStopping:
+    def __init__(self, patience: int, min_delta: float = 1e-4):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.best = float("inf")
+        self.counter = 0
+
+    def step(self, val_loss: float) -> bool:
+        """Returns True when training should stop."""
+        if val_loss < self.best - self.min_delta:
+            self.best = val_loss
+            self.counter = 0
+            return False
+        self.counter += 1
+        log.info(f"  Early-stop counter: {self.counter}/{self.patience}")
+        return self.counter >= self.patience
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
 def main():
     args = parse_args()
-    torch.manual_seed(args.seed)
+
+    local_rank, rank, world_size, is_main = setup_distributed()
+    # Different seed per rank so each GPU sees a different data shuffle
+    torch.manual_seed(args.seed + rank)
 
     output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if is_main:
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    log.info(f"Device: {device}")
+    device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
+    if is_main:
+        log.info(f"Device: {device}  world_size: {world_size}")
 
     # ── Precision ─────────────────────────────────────────────────────────────
     amp_dtype = None
@@ -248,28 +342,34 @@ def main():
         amp_dtype = torch.bfloat16
 
     # ── Base model ────────────────────────────────────────────────────────────
-    log.info(f"Loading base model: {args.base_model} pretrained={args.pretrained!r}")
+    if is_main:
+        log.info(f"Loading base model: {args.base_model} pretrained={args.pretrained!r}")
     pretrained = args.pretrained if args.pretrained else None
     model, preprocess_train, _ = open_clip.create_model_and_transforms(
         args.base_model, pretrained=pretrained, device=device
     )
     tokenizer = open_clip.get_tokenizer(args.base_model)
-
     model.requires_grad_(False)
 
     # ── Apply LoRA ────────────────────────────────────────────────────────────
     model = apply_lora(model, args)
 
     if args.resume:
-        log.info(f"Resuming adapter weights from {args.resume}")
+        if is_main:
+            log.info(f"Resuming adapter weights from {args.resume}")
         state = torch.load(args.resume, map_location="cpu")
         model.load_state_dict(state, strict=False)
 
     model.to(device)
 
+    # ── Wrap with DDP ─────────────────────────────────────────────────────────
+    if world_size > 1:
+        model = DDP(model, device_ids=[local_rank], find_unused_parameters=False)
+
     # ── Dataset ───────────────────────────────────────────────────────────────
-    log.info("Building dataset …")
-    dataset = CXRLabelDataset(
+    if is_main:
+        log.info("Building dataset …")
+    full_dataset = CXRLabelDataset(
         csv_path=args.train_csv,
         image_dir=args.image_dir,
         transform=preprocess_train,
@@ -278,55 +378,204 @@ def main():
         max_samples=args.max_samples,
         seed=args.seed,
     )
-    log.info(f"Dataset size: {len(dataset):,}")
+    if is_main:
+        log.info(f"Full dataset size: {len(full_dataset):,}")
 
-    loader = DataLoader(
-        dataset,
+    # Split into train / val
+    val_dataset = None
+    if args.val_csv:
+        train_dataset = full_dataset
+        val_dataset = CXRLabelDataset(
+            csv_path=args.val_csv,
+            image_dir=args.image_dir,
+            transform=preprocess_train,
+            tokenizer=tokenizer,
+            caption_mode=args.caption_mode,
+            seed=args.seed,
+        )
+        if is_main:
+            log.info(f"Train: {len(train_dataset):,}  Val (from --val-csv): {len(val_dataset):,}")
+    elif args.val_split > 0:
+        val_size = max(1, int(len(full_dataset) * args.val_split))
+        train_size = len(full_dataset) - val_size
+        generator = torch.Generator().manual_seed(args.seed)
+        train_dataset, val_dataset = random_split(
+            full_dataset, [train_size, val_size], generator=generator
+        )
+        if is_main:
+            log.info(
+                f"Train: {len(train_dataset):,}  "
+                f"Val (random split {args.val_split:.0%}): {len(val_dataset):,}"
+            )
+    else:
+        train_dataset = full_dataset
+        if is_main:
+            log.info("No validation set (--val-split 0 and no --val-csv). Early stopping disabled.")
+
+    # DistributedSampler ensures each GPU sees a non-overlapping shard
+    train_sampler = (
+        DistributedSampler(train_dataset, num_replicas=world_size, rank=rank,
+                           shuffle=True, seed=args.seed)
+        if world_size > 1 else None
+    )
+    train_loader = DataLoader(
+        train_dataset,
         batch_size=args.batch_size,
-        shuffle=True,
+        shuffle=(train_sampler is None),
+        sampler=train_sampler,
         num_workers=args.workers,
         pin_memory=True,
         drop_last=True,
     )
-    batch = next(iter(loader))
-    # ── Optimizer + loss ──────────────────────────────────────────────────────
+
+    val_loader = None
+    if val_dataset is not None:
+        # Val runs on all ranks; losses are averaged independently (they're identical since
+        # val data isn't sharded, which is fine for monitoring purposes)
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=args.batch_size * 2,
+            shuffle=False,
+            num_workers=args.workers,
+            pin_memory=True,
+            drop_last=False,
+        )
+
+    # ── Optimizer ─────────────────────────────────────────────────────────────
     trainable = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(trainable, lr=args.lr, weight_decay=0.01)
 
-    # Cosine LR schedule (epoch-level; epoch index is 0-based)
+    # ── Scheduler ─────────────────────────────────────────────────────────────
     warmup_epochs = max(1, args.epochs // 10)
 
-    def lr_lambda(epoch_idx):
-        if epoch_idx < warmup_epochs:
-            return (epoch_idx + 1) / warmup_epochs
-        progress = (epoch_idx - warmup_epochs) / max(1, args.epochs - warmup_epochs)
-        return 0.5 * (1.0 + math.cos(math.pi * progress))
+    if args.scheduler == "cosine":
+        min_factor = args.min_lr / args.lr
 
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+        def lr_lambda(epoch_idx):
+            if epoch_idx < warmup_epochs:
+                return (epoch_idx + 1) / warmup_epochs
+            progress = (epoch_idx - warmup_epochs) / max(1, args.epochs - warmup_epochs)
+            cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
+            return min_factor + (1.0 - min_factor) * cosine
 
-    loss_fn = ClipLoss()
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    else:  # plateau
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=0.5, patience=2, min_lr=args.min_lr
+        )
+
+    # ClipLoss: in multi-GPU mode, gather features from all ranks before computing loss.
+    # This makes the effective batch size = per-GPU batch * world_size, which is
+    # critical for contrastive learning (more negatives = better signal).
+    loss_fn = ClipLoss(
+        gather_with_grad=True,
+        rank=rank,
+        world_size=world_size,
+    )
+
+    # ── Early stopping ────────────────────────────────────────────────────────
+    early_stopper = None
+    if args.patience > 0 and val_loader is not None:
+        early_stopper = EarlyStopping(patience=args.patience)
+
+    best_val_loss = float("inf")
+    best_epoch = 0
 
     # ── Training loop ─────────────────────────────────────────────────────────
-    log.info(f"Training for {args.epochs} epochs …")
+    if is_main:
+        eff_batch = args.batch_size * args.grad_accum_steps * world_size
+        log.info(
+            f"Training for up to {args.epochs} epochs  "
+            f"(effective batch size: {eff_batch}) …"
+        )
+
     for epoch in range(1, args.epochs + 1):
-        avg_loss = train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch, amp_dtype, args.grad_accum_steps, args.epochs)
-        scheduler.step()
-        log.info(f"Epoch {epoch} — avg loss: {avg_loss:.4f}  lr={scheduler.get_last_lr()[0]:.2e}")
+        if train_sampler is not None:
+            train_sampler.set_epoch(epoch)  # ensures different shuffle each epoch
 
-        if epoch % args.save_frequency == 0:
-            ckpt_path = output_dir / f"epoch_{epoch}_adapter.pt"
-            # Save only adapter (LoRA) weights
-            adapter_state = {k: v for k, v in model.state_dict().items() if "lora_" in k}
-            torch.save(adapter_state, ckpt_path)
-            log.info(f"Adapter checkpoint saved → {ckpt_path}")
+        train_loss = train_one_epoch(
+            model, train_loader, loss_fn, optimizer, scaler,
+            device, epoch, amp_dtype, args.epochs,
+            args.report_interval_steps, args.grad_accum_steps,
+            is_main=is_main,
+        )
 
-    # ── Merge LoRA into base model and save ───────────────────────────────────
-    log.info("Merging LoRA weights into base model …")
-    merged_model = model.merge_and_unload()
-    merged_path = output_dir / "final_merged.pt"
-    torch.save(merged_model.state_dict(), merged_path)
-    log.info(f"Merged model saved → {merged_path}")
-    log.info("Done.")
+        val_loss = None
+        if val_loader is not None:
+            val_loss = eval_one_epoch(model, val_loader, loss_fn, device, amp_dtype)
+
+        # Scheduler step
+        if args.scheduler == "cosine":
+            scheduler.step()
+            current_lr = scheduler.get_last_lr()[0]
+        else:
+            monitor = val_loss if val_loss is not None else train_loss
+            scheduler.step(monitor)
+            current_lr = optimizer.param_groups[0]["lr"]
+
+        # All logging and checkpointing only on rank 0
+        if is_main:
+            if val_loss is not None:
+                log.info(
+                    f"Epoch {epoch}/{args.epochs} — "
+                    f"train={train_loss:.4f}  val={val_loss:.4f}  lr={current_lr:.2e}"
+                )
+            else:
+                log.info(
+                    f"Epoch {epoch}/{args.epochs} — train={train_loss:.4f}  lr={current_lr:.2e}"
+                )
+
+            monitor_loss = val_loss if val_loss is not None else train_loss
+            if monitor_loss < best_val_loss:
+                best_val_loss = monitor_loss
+                best_epoch = epoch
+                best_path = output_dir / "best_adapter.pt"
+                raw = _raw_model(model)
+                adapter_state = {k: v for k, v in raw.state_dict().items() if "lora_" in k}
+                torch.save(adapter_state, best_path)
+                log.info(
+                    f"  ↑ New best ({'val' if val_loss is not None else 'train'})"
+                    f" loss={best_val_loss:.4f} → {best_path}"
+                )
+
+            if epoch % args.save_frequency == 0:
+                ckpt_path = output_dir / f"epoch_{epoch}_adapter.pt"
+                raw = _raw_model(model)
+                adapter_state = {k: v for k, v in raw.state_dict().items() if "lora_" in k}
+                torch.save(adapter_state, ckpt_path)
+                log.info(f"Adapter checkpoint saved → {ckpt_path}")
+
+        # Early stopping: decide on rank 0, then broadcast so all ranks exit together
+        should_stop = False
+        if is_main and early_stopper is not None and val_loss is not None:
+            should_stop = early_stopper.step(val_loss)
+            if should_stop:
+                log.info(f"Early stopping triggered at epoch {epoch} (best was epoch {best_epoch})")
+        if world_size > 1:
+            stop_tensor = torch.tensor(int(should_stop), device=device)
+            dist.broadcast(stop_tensor, src=0)
+            should_stop = bool(stop_tensor.item())
+        if should_stop:
+            break
+
+        if world_size > 1:
+            dist.barrier()
+
+    if is_main:
+        log.info(f"Training complete. Best epoch: {best_epoch}  best loss: {best_val_loss:.4f}")
+
+    # ── Merge LoRA into base model and save (rank 0 only) ─────────────────────
+    if is_main:
+        log.info("Merging LoRA weights into base model …")
+        raw = _raw_model(model)
+        merged_model = raw.merge_and_unload()
+        merged_path = output_dir / "final_merged.pt"
+        torch.save(merged_model.state_dict(), merged_path)
+        log.info(f"Merged model saved → {merged_path}")
+        log.info("Done.")
+
+    if world_size > 1:
+        dist.destroy_process_group()
 
 
 if __name__ == "__main__":
