@@ -1,0 +1,80 @@
+Label-Aware Training Modes for MIMIC-CXR CLIP Fine-tuning
+==========================================================
+
+Problem with standard CLIP training
+-------------------------------------
+Standard CLIP treats each (image, text) pair in the batch as the only positive
+pair for that sample (diagonal target). In a medical multi-label setting this is
+wrong: if image A and image B both show "Edema and Pleural Effusion", pulling
+image A toward text A and *away* from text B is a training signal in the wrong
+direction. in addition they might share "Cardiomegaly" but not "Atelectasis", so they are not perfect matches. 
+We need to address this partial overlap in labels, 
+and also the fact that some labels are explicitly negated ("no Edema") while others are just not mentioned at all.
+
+CSV label encoding
+------------------
+  1   : label positively mentioned in report  → treat as POSITIVE
+  0   : label negatively mentioned ("no X")   → treat as EXPLICIT NEGATIVE
+  NaN : label not mentioned in report         → treat as EXPLICIT NEGATIVE
+  -1  : uncertain / ambiguous language        → IGNORE
+
+Training modes
+--------------
+
+standard
+  Vanilla CLIP diagonal loss. Each sample is its own positive pair.
+  Uses the original ClipLoss from open_clip (full distributed support).
+
+single_label
+  Two samples in the same batch are a POSITIVE PAIR if they share ≥1 label
+  with value 1. The loss target is a soft matrix: each row sums to 1, with
+  weight split equally across all in-batch positives.
+  Example: image with {Edema} matches text built from {Edema, Atelectasis}.
+
+two_label
+  Same as single_label but threshold is ≥2 shared positive labels.
+  Reduces noise from coincidentally shared single labels.
+
+negative_aware
+  Builds on single_label and adds a REPULSION term.
+  Two samples CONFLICT if one has label=1 and the other has label=0 for the
+  same pathology — i.e., one report confirms a finding, the other explicitly
+  rules it out.
+  The repulsion loss is a hinge: relu(cosine_sim(i,j) - margin) for all
+  conflicting pairs, weighted by --negative-weight.
+  This pushes known-different image-text pairs to have cosine similarity
+  below --negative-margin (default 0.0).
+
+Loss formulation
+----------------
+Multi-positive cross-entropy (for single_label / two_label / negative_aware):
+
+  target[i,j] = 1  if samples i and j share ≥k positive labels
+              = 0  if samples i and j conflict on any label
+              = 0  otherwise
+  Normalize each row so it sums to 1.
+
+  L_i2t = -sum_j(target[i,j] * log_softmax(logits)[i,j])   [image→text]
+  L_t2i = -sum_j(target[i,j] * log_softmax(logits.T)[i,j]) [text→image]
+  L_clip = (L_i2t + L_t2i) / 2
+
+  L_repulsion = relu(cosine_sim[conflict] - margin).mean()   [negative_aware only]
+
+  L_total = L_clip + neg_weight * L_repulsion
+
+New CLI flags (train_lora.py)
+------------------------------
+  --match-mode       {standard, single_label, two_label, negative_aware}
+  --negative-weight  Weight for repulsion term (default 0.5)
+  --negative-margin  Cosine sim margin for repulsion (default 0.0)
+
+Notes / limitations
+-------------------
+- Label-aware modes operate on the LOCAL batch only (no cross-GPU label
+  gathering). For distributed runs, effective positive mining is per-GPU.
+  Standard mode retains full distributed all-gather via ClipLoss.
+- NaN (not mentioned) is treated the same as 0 (explicit negative) → encoded as -1.0.
+  Only -1 (uncertain language) is treated as "ignore" (encoded as 0.0) and contributes
+  neither to positive overlap nor to conflict detection.
+- Future: shared-negative matching ("both reports explicitly deny label X")
+  could add a second positive-overlap channel.

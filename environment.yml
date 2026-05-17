@@ -1,0 +1,43 @@
+name: thesis_clip
+
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.11
+  - pip
+
+  # PyTorch with CUDA 12.1
+  - pytorch>=2.2,<2.4
+  - torchvision
+  - pytorch-cuda=12.1
+
+  # Core scientific stack — pinned to avoid the numpy dtype recursion bug
+  # (the old clip_mimic env had numpy<1.24 + scipy<1.11, which causes an
+  #  infinite recursion in numpy.core._dtype that kills the peft import)
+  - numpy>=1.26,<2.1
+  - scipy>=1.11
+  - scikit-learn>=1.3
+  - pandas>=2.0
+  - pillow>=10.0
+
+  # Plotting (run_all_evals.py)
+  - matplotlib>=3.7
+  - seaborn>=0.12
+
+  - pip:
+    # HuggingFace ecosystem
+    - "transformers>=4.40"
+    - "peft>=0.10"
+    - "huggingface_hub>=0.22"
+
+    # OpenCLIP vendored deps
+    - ftfy
+    - regex
+    - tqdm
+
+    # CLIP retrieval pipeline (build_baseline.py)
+    - clip-retrieval

@@ -37,8 +37,14 @@ import argparse
 import logging
 import math
 import os
+import ssl
 import sys
 from pathlib import Path
+
+# Bypass SSL verification for environments with corporate certificate inspection
+ssl._create_default_https_context = ssl._create_unverified_context
+os.environ.setdefault("CURL_CA_BUNDLE", "")
+os.environ.setdefault("REQUESTS_CA_BUNDLE", "")
 
 import torch
 import torch.distributed as dist
@@ -48,9 +54,10 @@ from torch.utils.data.distributed import DistributedSampler
 
 sys.path.insert(0, str(Path(__file__).parent / "open_clip" / "src"))
 import open_clip
-from open_clip.loss import ClipLoss
+from open_clip.loss import ClipLoss, SigLipLoss
 
 from train.cxr_label_dataset import CXRLabelDataset
+from train.label_aware_loss import LabelAwareClipLoss, LabelAwareSigLipLoss
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -135,6 +142,28 @@ def parse_args():
     # Early stopping
     p.add_argument("--patience", type=int, default=5,
                    help="Early stopping patience in epochs (0 to disable)")
+    # Label-aware loss
+    p.add_argument("--match-mode", default="standard",
+                   choices=["standard", "single_label", "two_label", "negative_aware"],
+                   help="How to define positive pairs in the batch. "
+                        "'standard': diagonal (vanilla CLIP). "
+                        "'single_label': share ≥1 positive label. "
+                        "'two_label': share ≥2 positive labels. "
+                        "'negative_aware': single_label + repulsion for conflicting pairs. "
+                        "See training_notes.txt for details.")
+    p.add_argument("--negative-weight", type=float, default=0.5,
+                   help="Weight for the repulsion loss term (negative_aware mode only).")
+    p.add_argument("--negative-margin", type=float, default=0.0,
+                   help="Cosine-sim margin for repulsion: pairs with sim < margin are not penalised "
+                        "(negative_aware mode only).")
+    # Loss variant
+    p.add_argument("--loss", default="clip", choices=["clip", "siglip"],
+                   help="Loss function. "
+                        "'clip': softmax multi-positive cross-entropy (LabelAwareClipLoss / ClipLoss). "
+                        "'siglip': sigmoid binary cross-entropy per pair (LabelAwareSigLipLoss / SigLipLoss). "
+                        "Compatible with all --match-mode options. "
+                        "SigLIP models (ViT-B-16-SigLIP etc.) expose a logit_bias parameter that "
+                        "is picked up automatically; vanilla CLIP models work fine without it.")
     return p.parse_args()
 
 
@@ -228,21 +257,43 @@ def apply_lora(model, args):
 
 def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch,
                     amp_dtype, total_epochs, report_interval_steps, grad_accum_steps=1,
-                    is_main=True):
+                    is_main=True, is_siglip=False):
     model.train()
     raw = _raw_model(model)
     total_loss = 0.0
     optimizer.zero_grad()
+    use_labels = isinstance(loss_fn, (LabelAwareClipLoss, LabelAwareSigLipLoss))
 
-    for step, (images, texts) in enumerate(loader):
+    for step, (images, texts, labels) in enumerate(loader):
         images = images.to(device)
         texts = texts.to(device)
+        labels_dev = labels.to(device)
+
+        # Log batch-level pairing stats once per epoch so training signal is visible
+        if is_main and step == 0 and use_labels:
+            stats = loss_fn.batch_stats(labels_dev)
+            log.info(
+                f"  [batch stats] avg_positives_per_sample={stats['avg_positives_per_sample']:.2f}"
+                f"  diagonal_only={stats['pct_diagonal_only']:.1f}%"
+                f"  conflict_pairs={stats['pct_conflict_pairs']:.1f}%"
+            )
 
         with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=(amp_dtype is not None)):
             image_features = raw.encode_image(images, normalize=True)
             text_features = raw.encode_text(texts, normalize=True)
             logit_scale = raw.logit_scale.exp()
-            loss = loss_fn(image_features, text_features, logit_scale)
+            if is_siglip:
+                # SigLIP models carry a learned logit_bias; vanilla CLIP models don't.
+                logit_bias = getattr(raw, "logit_bias", None)
+                if use_labels:
+                    loss = loss_fn(image_features, text_features, logit_scale, labels_dev, logit_bias)
+                else:
+                    loss = loss_fn(image_features, text_features, logit_scale, logit_bias)
+            else:
+                if use_labels:
+                    loss = loss_fn(image_features, text_features, logit_scale, labels_dev)
+                else:
+                    loss = loss_fn(image_features, text_features, logit_scale)
             loss = loss / grad_accum_steps
 
         if scaler is not None:
@@ -279,18 +330,29 @@ def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch,
 
 
 @torch.no_grad()
-def eval_one_epoch(model, loader, loss_fn, device, amp_dtype):
+def eval_one_epoch(model, loader, loss_fn, device, amp_dtype, is_siglip=False):
     model.eval()
     raw = _raw_model(model)
     total_loss = 0.0
-    for images, texts in loader:
+    use_labels = isinstance(loss_fn, (LabelAwareClipLoss, LabelAwareSigLipLoss))
+    logit_bias = getattr(raw, "logit_bias", None) if is_siglip else None
+    for images, texts, labels in loader:
         images = images.to(device)
         texts = texts.to(device)
         with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=(amp_dtype is not None)):
             image_features = raw.encode_image(images, normalize=True)
             text_features = raw.encode_text(texts, normalize=True)
             logit_scale = raw.logit_scale.exp()
-            loss = loss_fn(image_features, text_features, logit_scale)
+            if is_siglip:
+                if use_labels:
+                    loss = loss_fn(image_features, text_features, logit_scale, labels.to(device), logit_bias)
+                else:
+                    loss = loss_fn(image_features, text_features, logit_scale, logit_bias)
+            else:
+                if use_labels:
+                    loss = loss_fn(image_features, text_features, logit_scale, labels.to(device))
+                else:
+                    loss = loss_fn(image_features, text_features, logit_scale)
         total_loss += loss.item()
     return total_loss / len(loader)
 
@@ -464,14 +526,40 @@ def main():
             optimizer, mode="min", factor=0.5, patience=2, min_lr=args.min_lr
         )
 
-    # ClipLoss: in multi-GPU mode, gather features from all ranks before computing loss.
-    # This makes the effective batch size = per-GPU batch * world_size, which is
-    # critical for contrastive learning (more negatives = better signal).
-    loss_fn = ClipLoss(
-        gather_with_grad=True,
-        rank=rank,
-        world_size=world_size,
-    )
+    # Loss function.
+    # standard match_mode: use open_clip's distributed-aware ClipLoss / SigLipLoss.
+    # label-aware modes: use local-batch LabelAwareClipLoss / LabelAwareSigLipLoss;
+    #   distributed runs still benefit from DDP gradient sync even without all-gather.
+    is_siglip = args.loss == "siglip"
+    if args.match_mode == "standard":
+        if not is_siglip:
+            loss_fn = ClipLoss(
+                gather_with_grad=True,
+                rank=rank,
+                world_size=world_size,
+            )
+        else:
+            loss_fn = SigLipLoss(
+                rank=rank,
+                world_size=world_size,
+            )
+    else:
+        if not is_siglip:
+            loss_fn = LabelAwareClipLoss(
+                match_mode=args.match_mode,
+                neg_weight=args.negative_weight,
+                neg_margin=args.negative_margin,
+            )
+        else:
+            loss_fn = LabelAwareSigLipLoss(
+                match_mode=args.match_mode,
+                neg_weight=args.negative_weight,
+                neg_margin=args.negative_margin,
+            )
+    if is_main:
+        log.info(f"Loss: {args.loss}/{args.match_mode}"
+                 + (f"  neg_weight={args.negative_weight}  neg_margin={args.negative_margin}"
+                    if args.match_mode == "negative_aware" else ""))
 
     # ── Early stopping ────────────────────────────────────────────────────────
     early_stopper = None
@@ -497,12 +585,12 @@ def main():
             model, train_loader, loss_fn, optimizer, scaler,
             device, epoch, amp_dtype, args.epochs,
             args.report_interval_steps, args.grad_accum_steps,
-            is_main=is_main,
+            is_main=is_main, is_siglip=is_siglip,
         )
 
         val_loss = None
         if val_loader is not None:
-            val_loss = eval_one_epoch(model, val_loader, loss_fn, device, amp_dtype)
+            val_loss = eval_one_epoch(model, val_loader, loss_fn, device, amp_dtype, is_siglip=is_siglip)
 
         # Scheduler step
         if args.scheduler == "cosine":

@@ -2,37 +2,32 @@
 Unified text→image retrieval evaluation for multiple CLIP model backends.
 
 Encodes images directly from paired_dir (no pre-computed embeddings needed).
-Evaluates all single CheXpert labels and all 2-label combinations as queries.
+Evaluates CheXpert label queries in three modes:
+
+  single    13 queries  "atelectasis"
+              relevant = label == 1
+
+  pair      78 queries  "atelectasis and edema"
+              relevant = both labels == 1
+
+  negative  156 queries "atelectasis and no cardiomegaly"
+              relevant = pos label == 1  AND  neg label == 0 or NaN
+              (label=0 or NaN both mean the pathology is absent/unconfirmed)
+
+  all       (default) runs single + pair + negative
 
 Supported models
 ----------------
   vanilla_clip  : ViT-B/32 from OpenAI (baseline)
   biomedclip    : microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224
   cxrclip       : CXR-CLIP checkpoint (.tar) from cxr-clip repo
-
-Usage
------
-    python baseline/eval_model.py \
-        --model_type vanilla_clip \
-        --paired_dir ./baseline_output/paired_data \
-        --csv        cxr_data/all_txt_data_and_labels.csv
-
-    python baseline/eval_model.py \
-        --model_type biomedclip \
-        --paired_dir ./baseline_output/paired_data \
-        --csv        cxr_data/all_txt_data_and_labels.csv
-
-    python baseline/eval_model.py \
-        --model_type cxrclip \
-        --cxrclip_checkpoint ./more_models_to_try/cxrclip_checkpoint.tar \
-        --paired_dir ./baseline_output/paired_data \
-        --csv        cxr_data/all_txt_data_and_labels.csv
+  finetuned     : our merged LoRA checkpoint (final_merged.pt)
 """
 
 import argparse
 import logging
 import sys
-from itertools import combinations
+from itertools import combinations, permutations
 from pathlib import Path
 
 import numpy as np
@@ -142,14 +137,10 @@ class CXRClipBackend:
 
         self.text_max_length = cfg.get("base", {}).get("text_max_length", 256)
 
-        # Bypass cxrclip's load_tokenizer — its cache_dir is hardcoded to the
-        # original training server path. Use AutoTokenizer directly instead.
         from transformers import AutoTokenizer
         tokenizer_name = cfg["tokenizer"]["pretrained_model_name_or_path"]
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
 
-        # Override hardcoded cache_dir in text encoder config (original path
-        # points to the training server's /data directory)
         default_cache = str(Path.home() / ".cache" / "huggingface" / "hub")
         model_cfg = dict(cfg["model"])
         model_cfg["text_encoder"] = dict(model_cfg["text_encoder"])
@@ -164,7 +155,6 @@ class CXRClipBackend:
         self.model.load_state_dict(ckpt["model"], strict=False)
         self.model.to(device).eval()
 
-        # ResNet → ImageNet normalisation; ViT → (0.5, 0.5, 0.5)
         encoder_name = cfg["model"]["image_encoder"]["name"]
         if encoder_name == "resnet":
             mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
@@ -215,16 +205,51 @@ def _normalize(arr: np.ndarray) -> np.ndarray:
     return arr / np.where(norms == 0, 1.0, norms)
 
 
-def build_queries() -> list[dict]:
+def build_queries(query_mode: str = "all") -> list[dict]:
+    """
+    Build the list of retrieval queries for evaluation.
+
+    Each query dict has:
+      query          — text sent to the model encoder
+      type           — "single" | "pair" | "negative"
+      pos_label_cols — LABEL_COLS that must == 1 in relevant images
+      neg_label_cols — LABEL_COLS that must == 0 in relevant images (negative mode only)
+
+    Modes:
+      single   13 queries  "atelectasis"
+      pair     78 queries  "atelectasis and edema"
+      negative 156 queries "atelectasis and no cardiomegaly"
+      all      all of the above (247 total)
+    """
     queries = []
-    for label in CHEXPERT_LABELS:
-        queries.append({"query": label.lower(), "label_cols": [f"chexpert_{label}"], "type": "single"})
-    for l1, l2 in combinations(CHEXPERT_LABELS, 2):
-        queries.append({
-            "query": f"{l1.lower()} and {l2.lower()}",
-            "label_cols": [f"chexpert_{l1}", f"chexpert_{l2}"],
-            "type": "pair",
-        })
+
+    if query_mode in ("single", "all"):
+        for label in CHEXPERT_LABELS:
+            queries.append({
+                "query": label.lower(),
+                "type": "single",
+                "pos_label_cols": [f"chexpert_{label}"],
+                "neg_label_cols": [],
+            })
+
+    if query_mode in ("pair", "all"):
+        for l1, l2 in combinations(CHEXPERT_LABELS, 2):
+            queries.append({
+                "query": f"{l1.lower()} and {l2.lower()}",
+                "type": "pair",
+                "pos_label_cols": [f"chexpert_{l1}", f"chexpert_{l2}"],
+                "neg_label_cols": [],
+            })
+
+    if query_mode in ("negative", "all"):
+        for l_pos, l_neg in permutations(CHEXPERT_LABELS, 2):
+            queries.append({
+                "query": f"{l_pos.lower()} and no {l_neg.lower()}",
+                "type": "negative",
+                "pos_label_cols": [f"chexpert_{l_pos}"],
+                "neg_label_cols": [f"chexpert_{l_neg}"],
+            })
+
     return queries
 
 
@@ -261,6 +286,13 @@ def main():
                         help="Folder with *.jpg symlinks (output of build_baseline.py)")
     parser.add_argument("--csv", required=True,
                         help="Path to all_txt_data_and_labels.csv")
+    parser.add_argument("--query_mode", default="all",
+                        choices=["single", "pair", "negative", "all"],
+                        help="Which query types to evaluate. "
+                             "'single': 13 single-label queries. "
+                             "'pair': 78 two-label AND queries. "
+                             "'negative': 156 'yes A and no B' queries (uses label=0 in CSV). "
+                             "'all': all 247 queries (default).")
     parser.add_argument("--cxrclip_checkpoint", default=None,
                         help="Path to CXR-CLIP .tar checkpoint (required for --model_type cxrclip)")
     parser.add_argument("--finetuned_base_model", default=None,
@@ -291,7 +323,7 @@ def main():
     elif args.model_type == "biomedclip":
         backend = OpenCLIPBackend(
             "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224",
-            pretrained="",   # pretrained is baked into the hf-hub model
+            pretrained="",
             device=device,
         )
     elif args.model_type == "finetuned":
@@ -331,16 +363,18 @@ def main():
     log.info(f"Image embeddings: {img_emb.shape}")
 
     # ── Load CheXpert labels ──────────────────────────────────────────────────
+    # Keep raw values: 1=positive, 0=explicit negative, -1=uncertain, NaN=not mentioned.
+    # We need the 0 vs NaN distinction for "negative" query mode.
     log.info("Loading CheXpert labels …")
     df = pd.read_csv(args.csv, usecols=["metadata_dicom_id"] + LABEL_COLS)
     df = df.set_index("metadata_dicom_id")
-    label_matrix = (
-        df.reindex(dicom_ids)[LABEL_COLS].fillna(0).clip(lower=0).values.astype(np.float32)
-    )  # (n_total, 14)
+    label_matrix = df.reindex(dicom_ids)[LABEL_COLS].values.astype(float)
+    # label_matrix[i, j]: 1.0=positive, 0.0=explicit neg, NaN=not mentioned, -1.0=uncertain
+    log.info(f"Label matrix shape: {label_matrix.shape}")
 
     # ── Build and encode queries ──────────────────────────────────────────────
-    queries = build_queries()
-    log.info(f"Encoding {len(queries)} queries …")
+    queries = build_queries(args.query_mode)
+    log.info(f"Query mode: '{args.query_mode}'  →  {len(queries)} queries")
     query_strings = [q["query"] for q in queries]
     query_emb = backend.encode_texts(query_strings)
 
@@ -352,12 +386,32 @@ def main():
 
     rows = []
     for i, qdef in enumerate(queries):
-        col_indices = [LABEL_COLS.index(c) for c in qdef["label_cols"]]
-        relevant_mask = (label_matrix[:, col_indices] > 0).all(axis=1)
+        pos_indices = [LABEL_COLS.index(c) for c in qdef["pos_label_cols"]]
+        neg_indices = [LABEL_COLS.index(c) for c in qdef["neg_label_cols"]]
+
+        # Positive condition: all required positive labels must equal 1
+        pos_ok = (label_matrix[:, pos_indices] == 1.0).all(axis=1)
+
+        if neg_indices:
+            # Negative condition: neg label == 0 (explicitly ruled out) OR NaN
+            # (not mentioned). Both mean the pathology is absent/unconfirmed.
+            # CSV -1 (uncertain) does NOT count as absent.
+            neg_cols = label_matrix[:, neg_indices]
+            neg_ok = ((neg_cols == 0.0) | np.isnan(neg_cols)).all(axis=1)
+            relevant_mask = pos_ok & neg_ok
+        else:
+            relevant_mask = pos_ok
+
         n_relevant = int(relevant_mask.sum())
         retrieved_relevant = relevant_mask[top_k[i]]
 
-        row = {"query": qdef["query"], "type": qdef["type"], "n_relevant": n_relevant}
+        row = {
+            "query": qdef["query"],
+            "type": qdef["type"],
+            "n_relevant": n_relevant,
+            "pos_labels": ",".join(qdef["pos_label_cols"]),
+            "neg_labels": ",".join(qdef["neg_label_cols"]),
+        }
         for k in ks:
             row[f"P@{k}"] = precision_at_k(retrieved_relevant, k)
             row[f"R@{k}"] = recall_at_k(retrieved_relevant, k, n_relevant)
@@ -368,11 +422,13 @@ def main():
     # ── Print results ─────────────────────────────────────────────────────────
     metric_cols = [f"P@{k}" for k in ks] + [f"R@{k}" for k in ks]
     print("\n" + "=" * 90)
-    print(f"MODEL: {args.model_type}  |  gallery: {n_total:,} images")
+    print(f"MODEL: {args.model_type}  |  query_mode: {args.query_mode}  |  gallery: {n_total:,} images")
     print("=" * 90)
 
-    for qtype in ["single", "pair"]:
+    for qtype in ["single", "pair", "negative"]:
         subset = results_df[results_df["type"] == qtype]
+        if subset.empty:
+            continue
         print(f"\n{'─'*90}")
         print(f"  {qtype.upper()} LABEL QUERIES  ({len(subset)})")
         print(f"{'─'*90}")
@@ -380,7 +436,7 @@ def main():
             index=False, float_format=lambda x: f"{x:.4f}"
         ))
         non_empty = subset[subset["n_relevant"] > 0]
-        print(f"\n  Macro averages (queries with n_relevant > 0):")
+        print(f"\n  Macro averages (queries with n_relevant > 0, n={len(non_empty)}):")
         for k in ks:
             avg_p = non_empty[f"P@{k}"].mean()
             avg_r = non_empty[f"R@{k}"].mean()

@@ -2,290 +2,289 @@
  MIMIC-CXR CLIP FINE-TUNING GUIDE
 ================================================================================
 
-GOAL
-----
-Fine-tune CLIP models to align chest X-ray images with CheXpert label text
-(e.g. "atelectasis", "fracture and edema") so that text→image retrieval
-improves over the baselines (vanilla CLIP, BiomedCLIP, CXR-CLIP).
-
-The eval queries are label strings — not radiology reports — so we train
-with label-based captions to match that distribution.
+IMAGE DIR:
+  /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/
 
 
 ================================================================================
- OVERVIEW
+ TRAINING  (train_lora.py)
 ================================================================================
 
-  1. Build test gallery    (once)     build_baseline.py
-  2. Train a model                    train_lora.py  (or use the shell scripts)
-  3. Eval a single model              eval_model.py
-  4. Eval all models + compare        run_all_evals.py
+# Smoke test — verify pipeline end-to-end (tiny subset, no pretrained needed)
+python train_lora.py \
+    --base-model ViT-S-32-alt \
+    --train-csv cxr_data/mimic_cxr_train.csv \
+    --image-dir /mnt/.../files/ \
+    --output-dir ./experiments/smoke \
+    --batch-size 16 --epochs 1 --max-samples 200
 
+# Vanilla CLIP ViT-B-32 (standard loss, diagonal-only pairs)
+python train_lora.py \
+    --base-model ViT-B-32 --pretrained openai \
+    --train-csv cxr_data/mimic_cxr_train.csv \
+    --image-dir /mnt/.../files/ \
+    --output-dir ./experiments/lora_vitb32 \
+    --batch-size 128 --epochs 10
 
-================================================================================
- STEP 1 — BUILD THE TEST IMAGE GALLERY (run once)
-================================================================================
+# BiomedCLIP (batch 32 + grad-accum 2 to fit 11 GB VRAM)
+python train_lora.py \
+    --base-model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 \
+    --train-csv cxr_data/mimic_cxr_train.csv \
+    --image-dir /mnt/.../files/ \
+    --output-dir ./experiments/lora_biomedclip \
+    --batch-size 32 --grad-accum-steps 2 --epochs 10 \
+    --lora-modules "qkv,proj,fc1,fc2,query,key,value"
 
-python baseline_eval/build_baseline.py --csv cxr_data/mimic_cxr_official_test.csv --image_dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/ --output_dir ./eval_outputs/exp1
+# Resume from checkpoint
+python train_lora.py ... --resume ./experiments/lora_vitb32/epoch_5_adapter.pt
 
-Creates symlinks for the 5,159 official test images in:
-  ./eval_outputs/exp1/paired_data/
-
-This is the gallery all models are evaluated against. Only needs to be built once.
-
-
-================================================================================
- STEP 2 — TRAINING
-================================================================================
-
-Script: train_lora.py
-What it does:
-  - Loads a base CLIP model (vanilla or BiomedCLIP)
-  - Applies LoRA adapters (~1.6-1.9% of params trainable)
-  - Trains on mimic_cxr_train.csv using CheXpert label captions
-  - Saves adapter checkpoints each epoch + a merged final model for eval
-
---------------------------------------------------------------------------------
- RECOMMENDED: RUN WITH TMUX (survives SSH disconnects)
---------------------------------------------------------------------------------
-
-Each model has its own script that logs to logs/vanilla.log or logs/biomed.log.
-
-  # Vanilla CLIP on GPU 0:
-  tmux new -s vanilla
-  bash train_vanilla.sh
-  # Detach: Ctrl+B then D
-  # Re-attach: tmux attach -t vanilla
-  # Watch log from another terminal: tail -f logs/vanilla.log
-
-  # BiomedCLIP on GPU 1 (in a separate tmux window):
-  tmux new -s biomed
-  bash train_biomed.sh
-  # Detach: Ctrl+B then D
-  # Re-attach: tmux attach -t biomed
-  # Watch log from another terminal: tail -f logs/biomed.log
-
-  # List all tmux sessions:
-  tmux ls
-
-  # Kill a session when done:
-  tmux kill-session -t vanilla
-
---------------------------------------------------------------------------------
- FIXED PARAMS PER MODEL (do not change — these are tested to fit on 11GB)
---------------------------------------------------------------------------------
-
-  Model          Script             GPU  Batch  Grad Accum  Effective Batch
-  -------------  -----------------  ---  -----  ----------  ---------------
-  Vanilla CLIP   train_vanilla.sh   0    128    1           128
-  BiomedCLIP     train_biomed.sh    1    32     2           64
-
-  BiomedCLIP needs batch-size 32 + grad-accum-steps 2 to fit in 11GB VRAM.
-  Batch 64 and above OOMs.
-
---------------------------------------------------------------------------------
- CAPTION MODES  (--caption-mode)
---------------------------------------------------------------------------------
-
-  single   Each image paired with one random positive label
-           e.g. "atelectasis"
-
-  pair     Each image paired with two random positive labels
-           e.g. "fracture and edema"
-
-  both     (default) Randomly picks single or pair each sample
-           Best option — trains for both query types the eval uses
-
---------------------------------------------------------------------------------
- SUPPORTED BASE MODELS
---------------------------------------------------------------------------------
-
-  Model            --base-model arg                                                     --pretrained  --lora-modules
-  ---------------  -------------------------------------------------------------------  ------------  ------------------------------------------
-  Vanilla CLIP     ViT-B-32                                                             openai        in_proj,out_proj,c_fc,c_proj  (default)
-  BiomedCLIP       hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224     (omit)        qkv,proj,fc1,fc2,query,key,value
-                   Note: the script auto-resolves ambiguous names (e.g. proj also
-                   matches Conv2d/Sequential) to parent.leaf suffixes like attn.proj
-
---------------------------------------------------------------------------------
- KEY TRAINING OPTIONS
---------------------------------------------------------------------------------
-
-  --epochs           Number of training epochs (default: 10)
-  --batch-size       Batch size per step (default: 8)
-  --grad-accum-steps Gradient accumulation steps (default: 1)
-                     Effective batch = batch-size * grad-accum-steps
-  --lr               Learning rate (default: 1e-4)
-  --max-samples      Cap dataset size — useful for quick tests
-  --caption-mode     single | pair | both (default: both)
-  --lora-r           LoRA rank (default: 16, higher = more capacity)
-  --lora-alpha       LoRA alpha (default: 32)
-  --lora-target      image | text | both — which encoder(s) to LoRA (default: both)
-  --save-frequency   Save adapter checkpoint every N epochs (default: 1)
-  --precision        fp16 | bf16 | fp32 (default: fp16)
-  --resume           Path to a previous adapter .pt to continue from
-  --seed             Random seed (default: 42)
-
---------------------------------------------------------------------------------
- OUTPUTS
---------------------------------------------------------------------------------
-
-  experiments/<name>/epoch_N_adapter.pt   LoRA adapter weights only (small, ~11MB)
-  experiments/<name>/final_merged.pt      Full merged model for eval (used by eval script)
-  logs/vanilla.log                        Training log for vanilla CLIP
-  logs/biomed.log                         Training log for BiomedCLIP
-
---------------------------------------------------------------------------------
- MANUAL TRAINING COMMANDS (if you prefer not to use the scripts)
---------------------------------------------------------------------------------
-
-# Smoke-test (fast, verify it works)
-CUDA_VISIBLE_DEVICES=0 python train_lora.py --base-model ViT-B-32 --pretrained openai --train-csv cxr_data/mimic_cxr_train.csv --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/ --output-dir ./experiments/lora_smoke --epochs 3 --max-samples 5000 --batch-size 64
-
-# Full training — vanilla CLIP ViT-B-32  (GPU 0)
-CUDA_VISIBLE_DEVICES=0 python train_lora.py --base-model ViT-B-32 --pretrained openai --train-csv cxr_data/mimic_cxr_train.csv --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/ --output-dir ./experiments/lora_vitb32 --batch-size 128 --epochs 10
-
-# Full training — BiomedCLIP  (GPU 1, batch-size 32 + grad-accum 2 to avoid OOM)
-CUDA_VISIBLE_DEVICES=1 python train_lora.py --base-model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 --train-csv cxr_data/mimic_cxr_train.csv --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/ --output-dir ./experiments/lora_biomedclip --batch-size 32 --grad-accum-steps 2 --epochs 10 --lora-modules "qkv,proj,fc1,fc2,query,key,value"
-
-# Resume from a checkpoint
-CUDA_VISIBLE_DEVICES=0 python train_lora.py --base-model ViT-B-32 --pretrained openai --train-csv cxr_data/mimic_cxr_train.csv --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/ --output-dir ./experiments/lora_vitb32 --resume ./experiments/lora_vitb32/epoch_5_adapter.pt --batch-size 128
-
-# Train image encoder only (text encoder frozen)
-CUDA_VISIBLE_DEVICES=0 python train_lora.py --base-model ViT-B-32 --pretrained openai --train-csv cxr_data/mimic_cxr_train.csv --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/ --output-dir ./experiments/lora_vitb32_imgonly --lora-target image --batch-size 128
+Outputs:
+  experiments/<name>/epoch_N_adapter.pt   LoRA adapter weights (~11 MB)
+  experiments/<name>/final_merged.pt      Merged model used by eval
 
 
 ================================================================================
- STEP 3 — EVALUATE A SINGLE MODEL
+ EVAL A SINGLE MODEL  (baseline_eval/eval_model.py)
 ================================================================================
 
-Script: baseline_eval/eval_model.py
-What it does:
-  - Encodes all images in the test gallery
-  - Encodes 105 text queries (13 single labels + 78 two-label pairs, no Support Devices)
-  - Retrieves top-k images per query by cosine similarity
-  - Reports P@1, P@5, P@10 and R@1, R@5, R@10
+# Fine-tuned ViT-B-32
+python baseline_eval/eval_model.py \
+    --model_type finetuned --name lora_vitb32 \
+    --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
+    --finetuned_checkpoint ./experiments/lora_vitb32/final_merged.pt \
+    --paired_dir ./eval_outputs/exp1/paired_data \
+    --csv cxr_data/mimic_cxr_official_test.csv
 
---------------------------------------------------------------------------------
- MODEL TYPES  (--model_type)
---------------------------------------------------------------------------------
+# Fine-tuned BiomedCLIP
+python baseline_eval/eval_model.py \
+    --model_type finetuned --name lora_biomedclip \
+    --finetuned_base_model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 \
+    --finetuned_checkpoint ./experiments/lora_biomedclip/final_merged.pt \
+    --paired_dir ./eval_outputs/exp1/paired_data \
+    --csv cxr_data/mimic_cxr_official_test.csv
 
-  vanilla_clip   OpenAI ViT-B/32 — no extra args needed
-  biomedclip     Microsoft BiomedCLIP — no extra args needed
-  cxrclip        CXR-CLIP checkpoint — requires --cxrclip_checkpoint
-  finetuned      Our trained model — requires --finetuned_base_model,
-                 --finetuned_pretrained, --finetuned_checkpoint
+# Baselines (no fine-tuning)
+python baseline_eval/eval_model.py --model_type vanilla_clip \
+    --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv
 
---------------------------------------------------------------------------------
- EVAL COMMANDS
---------------------------------------------------------------------------------
+python baseline_eval/eval_model.py --model_type biomedclip \
+    --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv
 
-# Eval our fine-tuned ViT-B-32
-python baseline_eval/eval_model.py --model_type finetuned --name lora_vitb32 --finetuned_base_model ViT-B-32 --finetuned_pretrained openai --finetuned_checkpoint ./experiments/lora_vitb32/final_merged.pt --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv
-
-# Eval our fine-tuned BiomedCLIP
-python baseline_eval/eval_model.py --model_type finetuned --name lora_biomedclip --finetuned_base_model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 --finetuned_checkpoint ./experiments/lora_biomedclip/final_merged.pt --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv
-
-# Eval vanilla CLIP baseline
-python baseline_eval/eval_model.py --model_type vanilla_clip --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv
-
-# Eval BiomedCLIP baseline
-python baseline_eval/eval_model.py --model_type biomedclip --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv
+# Limit to a specific query mode (default: all)
+... --query_mode negative
 
 
 ================================================================================
- STEP 4 — EVALUATE ALL MODELS AND COMPARE
+ EVAL ALL MODELS + COMPARE  (baseline_eval/run_all_evals.py)
 ================================================================================
 
-Script: baseline_eval/run_all_evals.py
-What it does:
-  - Runs eval_model.py for every model in the MODELS list
-  - Produces summary CSVs and comparison plots
+# Run all models, all query modes
+python baseline_eval/run_all_evals.py \
+    --paired_dir ./eval_outputs/exp1/paired_data \
+    --csv cxr_data/mimic_cxr_official_test.csv \
+    --output_dir ./experiments/my_exp1 --batch_size 64
 
-To add a fine-tuned model to the comparison, uncomment/add an entry in
-the MODELS list in baseline_eval/run_all_evals.py:
+# Negative queries only
+python baseline_eval/run_all_evals.py ... --query_mode negative
 
+# Skip already-evaluated models
+python baseline_eval/run_all_evals.py ... --skip_existing
+
+To add a fine-tuned model, edit the MODELS list in run_all_evals.py:
   {
       "name": "lora_vitb32",
       "model_type": "finetuned",
-      "checkpoint": None,
       "finetuned_base_model": "ViT-B-32",
       "finetuned_pretrained": "openai",
       "finetuned_checkpoint": "experiments/lora_vitb32/final_merged.pt",
   },
 
---------------------------------------------------------------------------------
- EVAL ALL COMMANDS
---------------------------------------------------------------------------------
 
-# Run all models, save results + plots
-python baseline_eval/run_all_evals.py --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv --output_dir ./experiments/my_exp1 --batch_size 64
+================================================================================
+ LABEL ENCODING
+================================================================================
 
-# Skip models already evaluated (results CSV exists)
-python baseline_eval/run_all_evals.py --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv --output_dir ./experiments/my_exp1 --batch_size 64 --skip_existing
+CSV value → tensor encoding:
 
-# Run on a specific GPU
-CUDA_VISIBLE_DEVICES=2 python baseline_eval/run_all_evals.py --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv --output_dir ./experiments/my_exp1 --batch_size 64
+  CSV value  Meaning                          Tensor value
+  ---------  -------------------------------- ------------
+      1      Pathology positively mentioned   1.0  (positive)
+      0      Pathology explicitly ruled out   -1.0 (negative)
+     NaN     Label not mentioned in report    -1.0 (negative — same as 0)
+     -1      Ambiguous / uncertain mention    0.0  (ignored)
+
+NaN and 0 are both treated as -1.0 because a finding absent from the report
+is functionally the same as one explicitly ruled out: we have no evidence it is
+present. Only -1 (uncertain language such as "possible" or "cannot exclude") is
+treated as ambiguous and ignored — it provides no clean learning signal either way.
+
+Consequence for conflict detection: if sample A has Edema=1 and sample B has
+Edema=NaN, they will be flagged as a conflict in negative_aware mode (one
+confirms, the other provides no-evidence-of-presence, treated as denial).
 
 
 ================================================================================
- OUTPUTS FROM EVAL
+ KNOB 1 — CAPTION MODE  (--caption-mode)
 ================================================================================
 
-  summary_single.csv   P@k / R@k per model for each single-label query
-  summary_pair.csv     P@k / R@k per model for each 2-label query
-  summary_macro.csv    Macro-averaged metrics per model (one row per model)
-  plots/               Heatmaps and bar charts comparing all models
+Controls the text caption paired with each image during training.
+Captions are built from the image's POSITIVE (value=1) labels only.
 
+  single   One random positive label         "atelectasis"
+  pair     Two random positive labels        "fracture and edema"
+  both     Randomly single or pair           (DEFAULT)
+           (75 % single, 25 % pair — weighted toward single to match eval distribution)
 
-================================================================================
- STEP 5 — INTERACTIVE RETRIEVAL EXPLORER
-================================================================================
-
-Script: baseline_eval/explorer.py
-What it does:
-  - Loads all cached image embeddings from a previous eval run
-  - Starts a local web server where you can type any free-form query and see
-    what every model retrieves side-by-side
-  - Each result shows the CXR thumbnail, similarity score, and CheXpert labels
-    (green = positive, orange = uncertain) so you can judge relevance at a glance
-  - Click any image to see it full-size with the radiology report
-
---------------------------------------------------------------------------------
- COMMAND
---------------------------------------------------------------------------------
-
-# Start the explorer (one-liner from repo root):
-conda run -n clip_mimic python baseline_eval/explorer.py --paired_dir eval_outputs/exp1/paired_data --emb_dir eval_outputs/exp1 --csv cxr_data/all_txt_data_and_labels.csv --port 5050
-
-  --paired_dir   Folder with *.jpg images (same one used for eval)
-  --emb_dir      Directory containing the img_emb_*.npy cache files
-                 (same directory as --output_dir in run_all_evals.py)
-  --csv          all_txt_data_and_labels.csv (for CheXpert labels)
-  --port         Port to serve on (default: 5050)
-
-NOTE: requires that eval has been run first so that the *.npy embedding
-      cache files exist in --emb_dir. Models with no matching .npy are
-      skipped automatically.
-
---------------------------------------------------------------------------------
- ACCESSING FROM AN SSH SESSION
---------------------------------------------------------------------------------
-
-You need SSH port forwarding to open the browser on your local machine.
-Add -L to your ssh command when connecting:
-
-  ssh -L 5050:localhost:5050 <user@host>
-
-Then start the server on the remote machine and open http://localhost:5050
-in your local browser.
-
-If you already have an SSH session open, press ~C in the terminal, then type:
-  -L 5050:localhost:5050
+Recommendation: keep --caption-mode both (default). Eval uses both single and
+pair query types, so training on a mix generalises better.
 
 
 ================================================================================
- IMAGE DIR (for reference)
+ KNOB 2 — MATCH MODE  (--match-mode)
 ================================================================================
 
-/mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/
+Controls which (image, text) pairs in the batch are treated as positives.
+
+WHY THIS MATTERS
+----------------
+Standard CLIP treats each (image_i, text_i) as the one and only positive for
+sample i, pushing every other sample away as a negative. In a multi-label
+medical dataset this is wrong: if image A and image B both show "Edema and
+Pleural Effusion", pulling image A away from text B is a harmful training signal.
+The label-aware modes fix this by identifying which pairs share pathology labels.
+
+MODES
+-----
+  standard
+    Diagonal-only pairs (vanilla CLIP). Each sample is its own positive.
+    Uses open_clip's ClipLoss with full distributed all-gather. Good baseline.
+
+  single_label
+    Two samples are a positive pair if they share ≥1 label with value 1.
+    The loss target is a soft matrix: probability mass is split equally across
+    all in-batch positives so each row still sums to 1.
+    Example: image with {Edema} matches text built from {Edema, Atelectasis}.
+
+  two_label
+    Same as single_label but threshold is ≥2 shared positive labels.
+    More selective — reduces noise from coincidentally shared single labels.
+    Best paired with --caption-mode pair (captions name two labels).
+
+  negative_aware
+    Builds on single_label (threshold ≥1) and adds explicit REPULSION for
+    conflict pairs. A conflict = one sample has a label encoded as 1.0 and
+    the other has the same label encoded as -1.0 (i.e., CSV 0 or NaN).
+    Conflicting pairs are pushed apart with a hinge loss (see Knob 3).
+    Extra flags:
+      --negative-weight λ  weight for repulsion term  (default 0.5)
+      --negative-margin τ  cosine-sim threshold; pairs below τ are not penalised
+                           (default 0.0 — penalise any positive similarity)
+
+Diagnostics logged at step 0 of each epoch (label-aware modes only):
+  avg_positives_per_sample  — should be >1.0; if ≈1.0 the batch is too small
+                              or labels are too sparse (increase --batch-size)
+  diagonal_only (%)         — samples with no in-batch positive partner; keep <20 %
+  conflict_pairs (%)        — pairs being repelled (negative_aware only)
+
+
+================================================================================
+ KNOB 3 — LOSS VARIANT  (--loss)
+================================================================================
+
+Controls the mathematical form of the contrastive loss. Orthogonal to --match-mode:
+any combination of the two is valid.
+
+  clip    (DEFAULT) Softmax multi-positive cross-entropy.
+          Each row of the B×B similarity matrix is normalised via softmax.
+          For matching pairs the loss distributes probability mass across all
+          in-batch positives. Non-matching pairs are implicit negatives via
+          the softmax denominator.
+          Formula (label-aware):
+            target[i,j] = (shared ≥k labels AND no conflict) / row_sum
+            L_i2t = -Σ_j target[i,j] · log_softmax(logits)[i,j]
+            L_t2i = same with logits transposed
+            L_clip = (L_i2t + L_t2i) / 2
+            L_total = L_clip + λ · relu(sim[conflict] - τ).mean()  [negative_aware]
+
+  siglip  Sigmoid binary cross-entropy, one independent term per pair.
+          No softmax denominator — each (image_i, text_j) is a binary decision:
+            target[i,j] = +1 if positive pair, −1 if negative/conflicting
+            loss[i,j]   = −logsigmoid(target[i,j] · logits[i,j])
+            L_siglip    = sum over all B² pairs / B
+          Key advantage: loss per pair is decoupled from batch size.
+          Conflicting pairs already receive target −1 so the SigLIP loss
+          provides per-pair repulsion without a separate hinge. The optional
+          hinge is still added in negative_aware mode for extra emphasis.
+          Note: SigLIP model checkpoints (e.g. ViT-B-16-SigLIP) carry a
+          learned logit_bias; vanilla CLIP models don't — both work fine.
+
+Tuning λ (--negative-weight) and τ (--negative-margin):
+  λ = 0.5   balanced start
+  λ = 0.25  if training loss is unstable
+  λ = 1.0   aggressive repulsion
+  τ = 0.0   penalise any positive cosine similarity between conflict pairs
+  τ = -0.2  more lenient (only penalise if already fairly similar)
+  τ = 0.2   more aggressive (push apart even if similarity is low)
+
+
+================================================================================
+ KNOB 4 — QUERY MODE  (--query_mode, eval only)
+================================================================================
+
+  Mode      N queries  Query text example          Relevant images
+  --------  ---------  --------------------------  ----------------------------------
+  single    13         "atelectasis"               label_A == 1
+  pair      78         "atelectasis and edema"     label_A == 1 AND label_B == 1
+  negative  156        "atelectasis and no edema"  label_A == 1 AND label_B == 0/NaN
+  all       247        all of the above            (DEFAULT)
+
+negative mode: label_B == -1 (uncertain) does NOT count as absent.
+
+
+================================================================================
+ RECIPES
+================================================================================
+
+  Recipe A — Baseline (vanilla CLIP loss, diagonal pairs)
+    python train_lora.py ... --match-mode standard --loss clip
+
+  Recipe B — Soft positives (single label match, CLIP loss)
+    python train_lora.py ... --match-mode single_label
+
+  Recipe C — Strict positives (two shared labels)
+    python train_lora.py ... --match-mode two_label --caption-mode pair
+
+  Recipe D — Full negative-aware CLIP (attract similar, repel conflicting)
+    python train_lora.py ... --match-mode negative_aware \
+        --negative-weight 0.5 --negative-margin 0.0
+
+  Recipe E — SigLIP loss, label-aware (per-pair binary signal)
+    python train_lora.py ... --loss siglip --match-mode single_label
+
+  Recipe F — SigLIP + negative-aware (strongest repulsion signal)
+    python train_lora.py ... --loss siglip --match-mode negative_aware \
+        --negative-weight 0.5 --negative-margin 0.0
+
+
+================================================================================
+ DESIGN NOTES
+================================================================================
+
+Label-aware modes operate on the LOCAL batch only (no cross-GPU label
+gathering). For distributed runs, positive mining is per-GPU. Standard mode
+retains full distributed all-gather via open_clip's ClipLoss / SigLipLoss.
+
+Conflict detection covers both explicit negatives (CSV 0) and missing labels
+(NaN), since both are encoded as -1.0. This means a pair where one report
+confirms a finding and the other simply does not mention it will be flagged
+as conflicting in negative_aware mode. Whether this is desirable depends on
+the assumption about absence of evidence — currently we assume it equals
+evidence of absence.
+
+Uncertain labels (CSV -1, encoded as 0.0) are fully ignored: they contribute
+neither to positive overlap counting nor to conflict detection.
+
+Possible future extension: "shared-negative" positives — pairs where both
+reports explicitly deny the same label (both have CSV 0 for Edema) could be
+treated as an additional positive-overlap channel, since both images likely
+show the same finding-free appearance for that pathology.
