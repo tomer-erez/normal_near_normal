@@ -221,22 +221,33 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
             (axes[0], "P", ["P@1", "P@5", "P@10"]),
             (axes[1], "R", ["R@1", "R@5", "R@10"]),
         ]:
-            for i, metric in enumerate(metrics):
+            # Collect all values first so we can set ylim before drawing labels
+            all_metric_vals = []
+            per_metric = []
+            for metric in metrics:
                 col = f"{qtype}_{metric}"
                 vals = [
                     macro_summary.loc[macro_summary["model"] == m, col].values[0]
                     if col in macro_summary.columns else 0.0
                     for m in model_names
                 ]
+                per_metric.append((metric, vals))
+                all_metric_vals.extend(vals)
+            hi = max(all_metric_vals) if all_metric_vals else 1.0
+            ylim_top = min(1.0, hi * 1.4)  # 40% headroom for bar labels
+            ax.set_ylim(0, ylim_top)
+            label_pad = ylim_top * 0.02  # 2% of axis height
+            for i, (metric, vals) in enumerate(per_metric):
                 bars = ax.bar(x + i * width, vals, width, label=metric)
                 for bar, val in zip(bars, vals):
-                    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.005,
-                            f"{val:.2f}", ha="center", va="bottom", fontsize=7)
+                    text_y = min(bar.get_height() + label_pad, ylim_top * 0.97)
+                    ax.text(bar.get_x() + bar.get_width() / 2, text_y,
+                            f"{val:.3f}", ha="center", va="bottom", fontsize=7)
             ax.set_xticks(x + width)
             ax.set_xticklabels(short_names, rotation=30, ha="right", fontsize=9)
             ax.set_ylabel(f"{'Precision' if prefix == 'P' else 'Recall'} @ k")
-            ax.set_ylim(0, min(1.0, ax.get_ylim()[1] * 1.15))
-            ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.2f"))
+            ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.3f"))
+            ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=6, prune="both"))
             ax.legend(fontsize=9)
             ax.grid(axis="y", alpha=0.3)
         plt.tight_layout()
@@ -245,7 +256,7 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
         plt.close(fig)
         log.info(f"Saved → {path}")
 
-    # ── 3. Per-label grouped bar: P@10 for each label, bars = models ──────────
+    # ── 3. Per-label grouped bar: P@10 / R@10 for each label, bars = models ────
     if "single" in qtypes_present:
         for metric in ["P@10", "R@10"]:
             label_names = all_results[model_names[0]]
@@ -255,14 +266,19 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
             width = 0.8 / n_models
             x = np.arange(n_labels)
             fig, ax = plt.subplots(figsize=(max(14, n_labels * 1.0), 5))
+            all_vals = []
             for i, (m, short) in enumerate(zip(model_names, short_names)):
                 vals = all_results[m][all_results[m]["type"] == "single"][metric].values
+                all_vals.extend(vals)
                 ax.bar(x + i * width - 0.4 + width / 2, vals, width, label=short)
+            hi = max(all_vals) if all_vals else 1.0
+            ax.set_ylim(0, min(1.0, hi * 1.3))
             ax.set_xticks(x)
             ax.set_xticklabels(label_names, rotation=35, ha="right", fontsize=9)
             ax.set_ylabel(metric)
             ax.set_title(f"{metric} per label — all models", fontsize=13)
-            ax.set_ylim(0, 1.0)
+            ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.3f"))
+            ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=6, prune="both"))
             ax.legend(fontsize=8, ncol=min(n_models, 4))
             ax.grid(axis="y", alpha=0.3)
             plt.tight_layout()
@@ -305,22 +321,32 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
             (axes[0], "P", ["P@1", "P@5", "P@10"]),
             (axes[1], "R", ["R@1", "R@5", "R@10"]),
         ]:
-            for i, metric in enumerate(metrics):
+            all_metric_vals = []
+            per_metric = []
+            for metric in metrics:
                 col = f"negative_{metric}"
                 vals = [
                     macro_summary.loc[macro_summary["model"] == m, col].values[0]
                     if col in macro_summary.columns else 0.0
                     for m in model_names
                 ]
+                per_metric.append((metric, vals))
+                all_metric_vals.extend(vals)
+            hi = max(all_metric_vals) if all_metric_vals else 1.0
+            ylim_top = min(1.0, hi * 1.4)
+            ax.set_ylim(0, ylim_top)
+            label_pad = ylim_top * 0.02
+            for i, (metric, vals) in enumerate(per_metric):
                 bars = ax.bar(x + i * width, vals, width, label=metric)
                 for bar, val in zip(bars, vals):
-                    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.005,
-                            f"{val:.2f}", ha="center", va="bottom", fontsize=7)
+                    text_y = min(bar.get_height() + label_pad, ylim_top * 0.97)
+                    ax.text(bar.get_x() + bar.get_width() / 2, text_y,
+                            f"{val:.3f}", ha="center", va="bottom", fontsize=7)
             ax.set_xticks(x + width)
             ax.set_xticklabels(short_names, rotation=30, ha="right", fontsize=9)
             ax.set_ylabel(f"{'Precision' if prefix == 'P' else 'Recall'} @ k")
-            ax.set_ylim(0, min(1.0, ax.get_ylim()[1] * 1.15))
-            ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.2f"))
+            ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.3f"))
+            ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=6, prune="both"))
             ax.legend(fontsize=9)
             ax.grid(axis="y", alpha=0.3)
         plt.tight_layout()
