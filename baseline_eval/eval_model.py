@@ -146,6 +146,9 @@ class CXRClipBackend:
         model_cfg["text_encoder"] = dict(model_cfg["text_encoder"])
         model_cfg["text_encoder"]["cache_dir"] = default_cache
         model_cfg["text_encoder"]["local_files_only"] = False
+        # Don't load pretrained HuggingFace weights — the CXR-CLIP checkpoint
+        # contains all the weights; from_pretrained is only needed for the arch.
+        model_cfg["text_encoder"]["pretrained"] = False
 
         self.model = build_model(
             model_config=model_cfg,
