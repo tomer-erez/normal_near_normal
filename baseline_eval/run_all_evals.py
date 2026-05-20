@@ -68,21 +68,29 @@ MODELS = [
     {"name": "cxrclip_swint_mc",  "model_type": "cxrclip", "checkpoint": "swint_mc.pt"},
     # {"name": "cxrclip_swint_mcc", "model_type": "cxrclip", "checkpoint": "swint_mcc.pt"},
     # Fine-tuned models — add entries here after training:
+    # {
+    #     "name": "lora_vitb32_vanilla_clip",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "openai",
+    #     "finetuned_checkpoint": "experiments/lora_vitb32_with_5_ep/final_merged.pt",
+    # },
+    # {
+    #     "name": "lora_biomedclip",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/lora_biomedclip_with_5_ep/final_merged.pt",
+    # },
     {
-        "name": "lora_vitb32_vanilla_clip",
+        "name": "lora_vits32alt_smoke",
         "model_type": "finetuned",
         "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "openai",
-        "finetuned_checkpoint": "experiments/lora_vitb32_with_5_ep/final_merged.pt",
-    },
-    {
-        "name": "lora_biomedclip",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224",
+        "finetuned_base_model": "ViT-S-32-alt",
         "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/lora_biomedclip_with_5_ep/final_merged.pt",
+        "finetuned_checkpoint": "experiments/smoke/final_merged.pt",
     },
 ]
 
