@@ -2,21 +2,21 @@
 
   ---                                                                                                     
   Step 0 — Run once: build the official test CSV
-  python baeline_eval/build_official_test_set.py                                                              
+  python baeline_eval/create_train_test_sets.py
   Filters the 377k-row MIMIC-CXR CSV down to the 5,159 images in the official test split (images the
   CXR-CLIP models never trained on). Saves to cxr_data/mimic_cxr_official_test.csv.                       
                                                                                                           
   ---
   Step 1 — Build the image gallery                                                                        
-python baseline_eval/build_baseline.py --csv cxr_data/mimic_cxr_official_test.csv --output_dir ./eval_outputs/exp1 --max_samples 5000
+python baseline_eval/build_baseline.py --csv cxr_data/mimic_cxr_official_test.csv --output_dir ./eval_outputs/baseline_output_official_test --max_samples 5000
 
  Creates symlinks for all 5,159 test images in baseline_output_official_test/paired_data/. No embedding  
   happens here.
                                                                                                           
   ---                                                           
-  Step 2 — Run all model evaluations                                                         
-    python baseline_eval/run_all_evals.py --paired_dir ./eval_outputs/exp1/paired_data --csv cxr_data/mimic_cxr_official_test.csv --output_dir ./experiments/my_exp165 --batch_size 64                                                
-  
+  Step 2 — Run all model evaluations
+    python baseline_eval/run_all_evals.py --paired_dir ./eval_outputs/baseline_output_official_test/paired_data --csv cxr_data/mimic_cxr_official_test.csv --output_dir ./experiments/my_exp1 --batch_size 64
+
   For each model:
   - Loads images from paired_data/, encodes them with the model                                           
   - Encodes 105 text queries (14 single CheXpert labels + 91 two-label combinations)
@@ -27,8 +27,8 @@ python baseline_eval/build_baseline.py --csv cxr_data/mimic_cxr_official_test.cs
   Saves per-model CSVs + summary CSVs + plots to ./experiments/official_test_eval/.                       
                                                                                                           
   ---                                                                                                     
-  If you need to re-run only some models (e.g. GPU was busy):                                             
-  CUDA_VISIBLE_DEVICES=2 python baseline_eval/run_all_evals.py --paired_dir ./baseline_output_official_test/paired_data --csv cxr_data/mimic_cxr_official_test.csv --output_dir ./experiments/official_test_eval
+  If you need to re-run only some models (e.g. GPU was busy):
+  CUDA_VISIBLE_DEVICES=2 python baseline_eval/run_all_evals.py --paired_dir ./eval_outputs/baseline_output_official_test/paired_data --csv cxr_data/mimic_cxr_official_test.csv --output_dir ./experiments/my_exp1 --skip_existing
 
 
 

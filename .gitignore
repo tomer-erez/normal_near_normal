@@ -249,3 +249,6 @@ experiments/
 
 more_models_to_try/
 
+valid_pretrained_models_to_try/
+
+models_to_try/

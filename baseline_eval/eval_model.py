@@ -347,7 +347,9 @@ def main():
     if args.cxrclip_checkpoint:
         cache_name = f"img_emb_{args.model_type}_{Path(args.cxrclip_checkpoint).stem}.npy"
     elif args.model_type == "finetuned":
-        cache_name = f"img_emb_finetuned_{Path(args.finetuned_checkpoint).stem}.npy"
+        ckpt = Path(args.finetuned_checkpoint)
+        # Use parent dir name + stem so different experiments don't collide on "final_merged"
+        cache_name = f"img_emb_finetuned_{ckpt.parent.name}_{ckpt.stem}.npy"
     else:
         cache_name = f"img_emb_{args.model_type}.npy"
     cache_path = paired_dir.parent / cache_name

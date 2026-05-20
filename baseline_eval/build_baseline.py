@@ -133,7 +133,7 @@ def run_index(embeddings_dir: Path, index_dir: Path):
 def main():
     parser = argparse.ArgumentParser(description="Build CLIP retrieval baseline for MIMIC-CXR")
     parser.add_argument("--csv", required=True, help="Path to all_txt_data_and_labels.csv")
-    parser.add_argument("--image_dir", default=r"/mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files"
+    parser.add_argument("--image_dir", default=r"/cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files"
                         , help="Root MIMIC-CXR image directory")
     parser.add_argument("--output_dir", required=True, help="Where to store all artifacts")
     parser.add_argument("--model", default="ViT-B/32", help="CLIP model name (default: ViT-B/32)")
@@ -194,8 +194,8 @@ def main():
         log.info("Skipping indexing")
 
     log.info(
-        f"\n✓ Done! Query with:\n"
-        "python baseline/run_all_evals.py --paired_dir ./baseline_output/paired_data --csv cxr_data/all_txt_data_and_labels.csv"
+        f"Done! Paired data at: {paired_dir}\n"
+        f"Run eval with: python baseline_eval/run_all_evals.py --paired_dir {paired_dir} --csv {args.csv}"
     )
 
 

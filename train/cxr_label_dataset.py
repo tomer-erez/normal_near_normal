@@ -146,4 +146,5 @@ class CXRLabelDataset(Dataset):
         caption = _build_caption(chosen)
         tokens = self.tokenizer([caption])[0]  # (context_len,)
         label_tensor = torch.from_numpy(label_vec)  # (13,) float32
+
         return img, tokens, label_tensor

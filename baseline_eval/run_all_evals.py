@@ -32,6 +32,7 @@ Usage
 
 import argparse
 import logging
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -46,7 +47,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).parent.parent
-CHECKPOINTS_DIR = REPO_ROOT / "more_models_to_try"
+CHECKPOINTS_DIR = REPO_ROOT / "valid_pretrained_models_to_try"
 
 CHEXPERT_LABELS = [
     "Atelectasis", "Cardiomegaly", "Consolidation", "Edema",
@@ -404,6 +405,11 @@ def main():
             if model["checkpoint"] and not checkpoint_file.exists():
                 log.warning(f"Checkpoint not found, skipping {model['name']}: {checkpoint_file}")
                 continue
+            if model["model_type"] == "finetuned":
+                ft_ckpt = REPO_ROOT / model["finetuned_checkpoint"]
+                if not ft_ckpt.exists():
+                    log.warning(f"Finetuned checkpoint not found, skipping {model['name']}: {ft_ckpt}")
+                    continue
             try:
                 raw_path = run_eval(
                     model, args.paired_dir, args.csv,
@@ -411,7 +417,7 @@ def main():
                     batch_size=args.batch_size,
                 )
                 if raw_path.exists() and raw_path != out_path:
-                    raw_path.rename(out_path)
+                    shutil.move(str(raw_path), out_path)  # rename fails cross-filesystem
             except Exception as e:
                 log.error(f"Failed to evaluate {model['name']}: {e}")
                 continue

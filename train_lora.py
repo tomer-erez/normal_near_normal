@@ -150,7 +150,7 @@ def parse_args():
                         "'single_label': share ≥1 positive label. "
                         "'two_label': share ≥2 positive labels. "
                         "'negative_aware': single_label + repulsion for conflicting pairs. "
-                        "See training_notes.txt for details.")
+                        "See training_guide.txt for details.")
     p.add_argument("--negative-weight", type=float, default=0.5,
                    help="Weight for the repulsion loss term (negative_aware mode only).")
     p.add_argument("--negative-margin", type=float, default=0.0,
@@ -654,8 +654,16 @@ def main():
 
     # ── Merge LoRA into base model and save (rank 0 only) ─────────────────────
     if is_main:
-        log.info("Merging LoRA weights into base model …")
         raw = _raw_model(model)
+        # Merge from the best checkpoint rather than the final epoch. This matters
+        # when early stopping fires: the current model could be several epochs past
+        # the best validation loss.
+        best_path = output_dir / "best_adapter.pt"
+        if best_path.exists():
+            log.info(f"Loading best adapter from {best_path} before merging …")
+            state = torch.load(best_path, map_location="cpu")
+            raw.load_state_dict(state, strict=False)
+        log.info("Merging LoRA weights into base model …")
         merged_model = raw.merge_and_unload()
         merged_path = output_dir / "final_merged.pt"
         torch.save(merged_model.state_dict(), merged_path)

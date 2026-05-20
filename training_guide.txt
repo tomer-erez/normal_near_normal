@@ -12,11 +12,8 @@ IMAGE DIR:
 
 # Smoke test — verify pipeline end-to-end (tiny subset, no pretrained needed)
 python train_lora.py \
-    --base-model ViT-S-32-alt \
-    --train-csv cxr_data/mimic_cxr_train.csv \
-    --image-dir /mnt/.../files/ \
-    --output-dir ./experiments/smoke \
-    --batch-size 16 --epochs 1 --max-samples 200
+python train_lora.py --base-model ViT-S-32-alt --train-csv c
+xr_data/mimic_cxr_train.csv --image-dir cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files --output-dir ./experiments/smoke --batch-size 4 --epochs 1 --max-samples 8
 
 # Vanilla CLIP ViT-B-32 (standard loss, diagonal-only pairs)
 python train_lora.py \
@@ -151,6 +148,10 @@ Standard CLIP treats each (image_i, text_i) as the one and only positive for
 sample i, pushing every other sample away as a negative. In a multi-label
 medical dataset this is wrong: if image A and image B both show "Edema and
 Pleural Effusion", pulling image A away from text B is a harmful training signal.
+It gets more subtle with partial overlap: two images may share "Cardiomegaly"
+but not "Atelectasis", so they are not perfect matches — they should be
+attracted along the shared label but not unconditionally. That is exactly what
+the soft-target label-aware modes handle (threshold controls strictness).
 The label-aware modes fix this by identifying which pairs share pathology labels.
 
 MODES
@@ -288,3 +289,303 @@ Possible future extension: "shared-negative" positives — pairs where both
 reports explicitly deny the same label (both have CSV 0 for Edema) could be
 treated as an additional positive-overlap channel, since both images likely
 show the same finding-free appearance for that pathology.
+
+
+================================================================================
+ RESEARCH EXPERIMENTS — full commands
+================================================================================
+
+All commands use the same shorthands:
+  TRAIN_CSV=cxr_data/mimic_cxr_train.csv
+  IMAGE_DIR=/mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/
+  TEST_CSV=cxr_data/mimic_cxr_official_test.csv
+  PAIRED_DIR=./eval_outputs/exp1/paired_data
+
+
+────────────────────────────────────────────────────────────────────────────────
+EXP 1 — BASELINE GRID (match-mode × loss)
+────────────────────────────────────────────────────────────────────────────────
+Compare all six mode combinations under identical conditions. Run training then
+eval for each; compare with run_all_evals.py.
+
+# 1a. Vanilla CLIP (diagonal, softmax)
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp1_standard_clip \
+    --match-mode standard --loss clip \
+    --batch-size 128 --epochs 10
+
+# 1b. Single-label soft positives
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp1_single_clip \
+    --match-mode single_label --loss clip \
+    --batch-size 128 --epochs 10
+
+# 1c. Two-label + pair captions
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp1_two_clip \
+    --match-mode two_label --caption-mode pair --loss clip \
+    --batch-size 128 --epochs 10
+
+# 1d. Negative-aware CLIP
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp1_negaware_clip \
+    --match-mode negative_aware --loss clip \
+    --negative-weight 0.5 --negative-margin 0.0 \
+    --batch-size 128 --epochs 10
+
+# 1e. Single-label SigLIP
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp1_single_siglip \
+    --match-mode single_label --loss siglip \
+    --batch-size 128 --epochs 10
+
+# 1f. Negative-aware SigLIP (strongest repulsion)
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp1_negaware_siglip \
+    --match-mode negative_aware --loss siglip \
+    --negative-weight 0.5 --negative-margin 0.0 \
+    --batch-size 128 --epochs 10
+
+# Add all six to run_all_evals.py MODELS list, then evaluate together:
+python baseline_eval/run_all_evals.py \
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV \
+    --output_dir ./experiments/exp1_results --batch_size 64
+
+
+────────────────────────────────────────────────────────────────────────────────
+EXP 2 — BATCH SIZE EFFECT ON LABEL-AWARE MINING
+────────────────────────────────────────────────────────────────────────────────
+Label-aware modes depend on how many positive partners appear in the same batch.
+Larger batches = more in-batch positives = stronger signal. Watch the
+"avg_positives_per_sample" diagnostic (logged at step 0 of each epoch).
+If it's close to 1.0, increase batch size.
+
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp2_bs32 \
+    --match-mode single_label --batch-size 32 --epochs 10
+
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp2_bs128 \
+    --match-mode single_label --batch-size 128 --epochs 10
+
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp2_bs256_accum2 \
+    --match-mode single_label --batch-size 128 --grad-accum-steps 2 --epochs 10
+# Note: grad-accum does NOT increase the label matrix size (still per-step batch).
+# For label-aware mining, use larger --batch-size, not --grad-accum-steps.
+
+
+────────────────────────────────────────────────────────────────────────────────
+EXP 3 — LORA ENCODER TARGET ABLATION
+────────────────────────────────────────────────────────────────────────────────
+Does fine-tuning the image encoder, text encoder, or both matter most for
+retrieval? Hypothesis: text encoder matters more (it shapes query space).
+
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp3_image_only \
+    --match-mode single_label --lora-target image \
+    --batch-size 128 --epochs 10
+
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp3_text_only \
+    --match-mode single_label --lora-target text \
+    --batch-size 128 --epochs 10
+
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp3_both \
+    --match-mode single_label --lora-target both \
+    --batch-size 128 --epochs 10
+
+
+────────────────────────────────────────────────────────────────────────────────
+EXP 4 — LORA RANK ABLATION
+────────────────────────────────────────────────────────────────────────────────
+Higher rank = more parameters = more capacity but more risk of overfitting.
+Default is r=16. ViT-B-32 has ~154M params; LoRA at r=16 adds ~1.9% (~2.9M).
+
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp4_r4 \
+    --match-mode single_label --lora-r 4 --lora-alpha 8 \
+    --batch-size 128 --epochs 10
+
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp4_r16 \
+    --match-mode single_label --lora-r 16 --lora-alpha 32 \
+    --batch-size 128 --epochs 10
+
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp4_r64 \
+    --match-mode single_label --lora-r 64 --lora-alpha 128 \
+    --batch-size 128 --epochs 10
+
+# Rule of thumb: keep lora-alpha = 2 × lora-r (scales the adapter output).
+
+
+────────────────────────────────────────────────────────────────────────────────
+EXP 5 — NEGATIVE-AWARE REPULSION STRENGTH
+────────────────────────────────────────────────────────────────────────────────
+Tuning λ (--negative-weight) and τ (--negative-margin) for negative-query eval.
+Goal: does stronger repulsion improve "atelectasis and no edema" queries?
+
+# Conservative repulsion
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp5_negaware_w025 \
+    --match-mode negative_aware --loss clip \
+    --negative-weight 0.25 --negative-margin 0.0 \
+    --batch-size 128 --epochs 10
+
+# Balanced (default)
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp5_negaware_w05 \
+    --match-mode negative_aware --loss clip \
+    --negative-weight 0.5 --negative-margin 0.0 \
+    --batch-size 128 --epochs 10
+
+# Aggressive repulsion
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp5_negaware_w10 \
+    --match-mode negative_aware --loss clip \
+    --negative-weight 1.0 --negative-margin 0.0 \
+    --batch-size 128 --epochs 10
+
+# Lenient margin (only penalise if already fairly similar)
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp5_negaware_margin02 \
+    --match-mode negative_aware --loss clip \
+    --negative-weight 0.5 --negative-margin 0.2 \
+    --batch-size 128 --epochs 10
+
+# Evaluate specifically on negative queries to see the clearest signal:
+python baseline_eval/eval_model.py \
+    --model_type finetuned --name exp5_negaware_w05 \
+    --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
+    --finetuned_checkpoint ./experiments/exp5_negaware_w05/final_merged.pt \
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV \
+    --query_mode negative
+
+
+────────────────────────────────────────────────────────────────────────────────
+EXP 6 — BIOMEDCLIP BASE MODEL
+────────────────────────────────────────────────────────────────────────────────
+BiomedCLIP is pre-trained on biomedical image-text pairs (PMC). It likely has
+a stronger prior for chest X-ray vocabulary than vanilla CLIP.
+
+# BiomedCLIP + standard loss (baseline comparison to its zero-shot performance)
+python train_lora.py \
+    --base-model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp6_biomedclip_standard \
+    --match-mode standard --loss clip \
+    --batch-size 32 --grad-accum-steps 4 --epochs 10 \
+    --lora-modules "qkv,proj,fc1,fc2,query,key,value"
+
+# BiomedCLIP + negative-aware (best of both worlds)
+python train_lora.py \
+    --base-model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp6_biomedclip_negaware \
+    --match-mode negative_aware --loss clip \
+    --negative-weight 0.5 --negative-margin 0.0 \
+    --batch-size 32 --grad-accum-steps 4 --epochs 10 \
+    --lora-modules "qkv,proj,fc1,fc2,query,key,value"
+
+# Note: BiomedCLIP uses a different architecture (ViT + PubMedBERT). The default
+# --lora-modules "in_proj,out_proj,c_fc,c_proj" targets CLIP-style layers; the
+# expanded list above also covers HuggingFace transformer layers (query/key/value/fc1/fc2).
+
+
+────────────────────────────────────────────────────────────────────────────────
+EXP 7 — CAPTION MODE ABLATION
+────────────────────────────────────────────────────────────────────────────────
+Does training exclusively with pair captions help pair-query retrieval?
+
+# Single only
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp7_caption_single \
+    --match-mode single_label --caption-mode single \
+    --batch-size 128 --epochs 10
+
+# Pair only (needs two_label match so captions and positives align)
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp7_caption_pair \
+    --match-mode two_label --caption-mode pair \
+    --batch-size 128 --epochs 10
+
+# Both (default, recommended)
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp7_caption_both \
+    --match-mode single_label --caption-mode both \
+    --batch-size 128 --epochs 10
+
+
+────────────────────────────────────────────────────────────────────────────────
+EXP 8 — MULTI-GPU TRAINING (torchrun)
+────────────────────────────────────────────────────────────────────────────────
+Label-aware modes mine positives within the LOCAL batch per GPU. To scale
+positive mining across all GPUs, use standard mode with open_clip's all-gather.
+For label-aware modes, increase --batch-size instead (equivalent effect).
+
+# 4-GPU standard CLIP (full distributed all-gather, scales well)
+CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 train_lora.py \
+    --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp8_4gpu_standard \
+    --match-mode standard --loss clip \
+    --batch-size 64 --epochs 10
+# Effective batch = 64 * 4 = 256 (all-gather sees all GPUs' embeddings)
+
+# 4-GPU label-aware (per-GPU positive mining; increase per-GPU batch)
+CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 train_lora.py \
+    --base-model ViT-B-32 --pretrained openai \
+    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
+    --output-dir ./experiments/exp8_4gpu_labelaware \
+    --match-mode single_label --loss clip \
+    --batch-size 128 --epochs 10
+# Each GPU mines positives within its own 128-sample batch
+
+
+────────────────────────────────────────────────────────────────────────────────
+QUICK DIAGNOSTICS CHECKLIST
+────────────────────────────────────────────────────────────────────────────────
+After each run, check the per-epoch log lines:
+
+  [batch stats] avg_positives_per_sample=X.XX  diagonal_only=Y.Y%  conflict_pairs=Z.Z%
+
+  avg_positives_per_sample
+    ≈ 1.0  → batch too small or mode too strict; increase --batch-size or switch
+             from two_label to single_label
+    > 2.0  → healthy; label-aware modes have real signal to exploit
+
+  diagonal_only
+    > 20%  → too many samples have no in-batch partner; same remedies as above
+
+  conflict_pairs
+    < 1%   → very few conflicting pairs; --negative-weight has little effect
+    5-15%  → healthy signal for repulsion term in negative_aware mode
+
+Training/val loss:
+  val_loss rises while train_loss falls → overfitting; reduce --lr or --lora-r,
+  or add more dropout (--lora-dropout 0.1)
+  val_loss plateaus quickly → learning rate too high or LoRA rank too low
