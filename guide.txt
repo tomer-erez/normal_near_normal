@@ -597,6 +597,7 @@ Add each trained model to run_all_evals.py MODELS list and run Step 2 once to
 compare everything side-by-side. Or use the per-model eval commands below.
 
 
+
 ────────────────────────────────────────────────────────────────────────────────
 IDEA 1a — Vanilla CLIP baseline (diagonal pairs, softmax loss)
 What: Standard CLIP fine-tuning with no multi-label awareness. Each image is
@@ -744,6 +745,103 @@ python baseline_eval/eval_model.py \
     --finetuned_checkpoint ./experiments/exp1f_negaware_siglip/final_merged.pt \
     --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
     --csv cxr_data/mimic_cxr_official_test.csv
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+IDEA 1g — Frozen CXR-CLIP image encoder + new OpenCLIP text encoder
+What: The CXR-CLIP models (r50_mc, swint_mc) were pre-trained on large
+      biomedical datasets with a specialized image encoder and a Bio_ClinicalBERT
+      text encoder. Here we keep their image encoder frozen (it already captures
+      rich CXR-specific visual representations) and pair it with a freshly
+      fine-tuned OpenCLIP text encoder (ViT-B-32, initialized from openai weights).
+      The text encoder learns to align with the frozen image space using our
+      label-format captions ("atelectasis", "atelectasis and edema", etc.) and
+      whatever match-mode / loss combination we choose.
+
+      Both sides project to 512-dim embeddings, matching by design: the CXR-CLIP
+      projection head outputs 512-dim, and ViT-B-32's text encoder also ends at
+      512-dim. No architecture changes required.
+
+      CXR-CLIP checkpoints available in valid_pretrained_models_to_try/:
+        r50_mc.pt    — ResNet50 image encoder, ImageNet normalization
+        swint_mc.pt  — Swin-T image encoder, 0.5 normalization
+
+      New flag: --cxrclip-checkpoint path/to/r50_mc.pt
+      Combined with normal --base-model ViT-B-32 --pretrained openai (text side).
+      LoRA is applied to the text encoder only (default --lora-target both still
+      works because the CXR-CLIP image encoder modules don't match the default
+      LoRA target names in_proj/out_proj/c_fc/c_proj).
+────────────────────────────────────────────────────────────────────────────────
+
+# TRAIN — r50_mc image encoder + label-aware CLIP loss (recommended starting point)
+python train_lora.py \
+    --base-model ViT-B-32 --pretrained openai \
+    --cxrclip-checkpoint valid_pretrained_models_to_try/r50_mc.pt \
+    --train-csv  cxr_data/mimic_cxr_train.csv \
+    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
+    --output-dir ./experiments/exp8_r50_mc_single_clip \
+    --match-mode single_label --loss clip \
+    --batch-size 128 --epochs 10
+
+# TRAIN — r50_mc + negative-aware CLIP loss
+python train_lora.py \
+    --base-model ViT-B-32 --pretrained openai \
+    --cxrclip-checkpoint valid_pretrained_models_to_try/r50_mc.pt \
+    --train-csv  cxr_data/mimic_cxr_train.csv \
+    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
+    --output-dir ./experiments/exp8_r50_mc_negaware_clip \
+    --match-mode negative_aware --loss clip \
+    --negative-weight 0.5 --negative-margin 0.0 \
+    --batch-size 128 --epochs 10
+
+# TRAIN — swint_mc image encoder + label-aware CLIP loss
+python train_lora.py \
+    --base-model ViT-B-32 --pretrained openai \
+    --cxrclip-checkpoint valid_pretrained_models_to_try/swint_mc.pt \
+    --train-csv  cxr_data/mimic_cxr_train.csv \
+    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
+    --output-dir ./experiments/exp8_swint_mc_single_clip \
+    --match-mode single_label --loss clip \
+    --batch-size 128 --epochs 10
+
+# EVAL — r50_mc single_label
+python baseline_eval/eval_model.py \
+    --model_type cxrclip_hybrid --name exp8_r50_mc_single_clip \
+    --cxrclip_image_checkpoint valid_pretrained_models_to_try/r50_mc.pt \
+    --hybrid_merged_checkpoint ./experiments/exp8_r50_mc_single_clip/final_merged.pt \
+    --hybrid_text_model ViT-B-32 --hybrid_text_pretrained openai \
+    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
+    --csv cxr_data/mimic_cxr_official_test.csv
+
+# EVAL — r50_mc negative_aware
+python baseline_eval/eval_model.py \
+    --model_type cxrclip_hybrid --name exp8_r50_mc_negaware_clip \
+    --cxrclip_image_checkpoint valid_pretrained_models_to_try/r50_mc.pt \
+    --hybrid_merged_checkpoint ./experiments/exp8_r50_mc_negaware_clip/final_merged.pt \
+    --hybrid_text_model ViT-B-32 --hybrid_text_pretrained openai \
+    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
+    --csv cxr_data/mimic_cxr_official_test.csv
+
+# EVAL — swint_mc single_label
+python baseline_eval/eval_model.py \
+    --model_type cxrclip_hybrid --name exp8_swint_mc_single_clip \
+    --cxrclip_image_checkpoint valid_pretrained_models_to_try/swint_mc.pt \
+    --hybrid_merged_checkpoint ./experiments/exp8_swint_mc_single_clip/final_merged.pt \
+    --hybrid_text_model ViT-B-32 --hybrid_text_pretrained openai \
+    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
+    --csv cxr_data/mimic_cxr_official_test.csv
+
+# Add to run_all_evals.py MODELS list:
+#   {
+#       "name": "exp8_r50_mc_single_clip",
+#       "model_type": "cxrclip_hybrid",
+#       "cxrclip_image_checkpoint": "valid_pretrained_models_to_try/r50_mc.pt",
+#       "hybrid_text_model": "ViT-B-32",
+#       "hybrid_text_pretrained": "openai",
+#       "hybrid_merged_checkpoint": "experiments/exp8_r50_mc_single_clip/final_merged.pt",
+#   },
+
 
 
 ────────────────────────────────────────────────────────────────────────────────

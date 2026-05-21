@@ -85,12 +85,12 @@ MODELS = [
     #     "finetuned_checkpoint": "experiments/lora_biomedclip_with_5_ep/final_merged.pt",
     # },
     {
-        "name": "lora_vits32alt_smoke",
+        "name": "vanilla_ft",
         "model_type": "finetuned",
         "checkpoint": None,
-        "finetuned_base_model": "ViT-S-32-alt",
+        "finetuned_base_model": "ViT-B-32",
         "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/smoke/final_merged.pt",
+        "finetuned_checkpoint": "experiments/_vanilla_bsz16x8_just_for_merge/final_merged.pt",
     },
 ]
 
@@ -101,9 +101,9 @@ METRIC_COLS = [f"P@{k}" for k in KS] + [f"R@{k}" for k in KS]
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def results_path(model: dict) -> Path:
-    if model["model_type"] == "finetuned":
+    if model["model_type"] in ("finetuned", "cxrclip_hybrid"):
         return REPO_ROOT / f"results_{model['name']}.csv"
-    if model["checkpoint"]:
+    if model.get("checkpoint"):
         stem = Path(model["checkpoint"]).stem
         return REPO_ROOT / f"results_cxrclip_{stem}.csv"
     return REPO_ROOT / f"results_{model['model_type']}.csv"
@@ -121,13 +121,20 @@ def run_eval(model: dict, paired_dir: str, csv: str,
         "--query_mode", query_mode,
         "--batch_size", str(batch_size),
     ]
-    if model["checkpoint"]:
+    if model.get("checkpoint"):
         cmd += ["--cxrclip_checkpoint", str(CHECKPOINTS_DIR / model["checkpoint"])]
     if model["model_type"] == "finetuned":
         cmd += [
             "--finetuned_base_model", model["finetuned_base_model"],
             "--finetuned_pretrained", model.get("finetuned_pretrained", ""),
             "--finetuned_checkpoint", str(REPO_ROOT / model["finetuned_checkpoint"]),
+        ]
+    if model["model_type"] == "cxrclip_hybrid":
+        cmd += [
+            "--cxrclip_image_checkpoint", str(REPO_ROOT / model["cxrclip_image_checkpoint"]),
+            "--hybrid_merged_checkpoint", str(REPO_ROOT / model["hybrid_merged_checkpoint"]),
+            "--hybrid_text_model", model.get("hybrid_text_model", "ViT-B-32"),
+            "--hybrid_text_pretrained", model.get("hybrid_text_pretrained", "openai"),
         ]
     log.info(f"Running: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
@@ -410,7 +417,7 @@ def main():
         epilog=__doc__,
     )
     parser.add_argument("--paired_dir", required=True)
-    parser.add_argument("--csv", required=True)
+    parser.add_argument("--csv", required=False,default="cxr_data/all_txt_data_and_labels.csv",)
     parser.add_argument("--output_dir", required=True,
                         help="Directory to store all results CSVs and plots for this experiment")
     parser.add_argument("--query_mode", default="all",
@@ -443,6 +450,11 @@ def main():
                 ft_ckpt = REPO_ROOT / model["finetuned_checkpoint"]
                 if not ft_ckpt.exists():
                     log.warning(f"Finetuned checkpoint not found, skipping {model['name']}: {ft_ckpt}")
+                    continue
+            if model["model_type"] == "cxrclip_hybrid":
+                merged_ckpt = REPO_ROOT / model["hybrid_merged_checkpoint"]
+                if not merged_ckpt.exists():
+                    log.warning(f"Hybrid checkpoint not found, skipping {model['name']}: {merged_ckpt}")
                     continue
             try:
                 raw_path = run_eval(

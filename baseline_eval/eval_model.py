@@ -123,6 +123,63 @@ class FinetunedOpenCLIPBackend(OpenCLIPBackend):
         log.info(f"Loaded fine-tuned weights from {checkpoint_path}")
 
 
+class CXRHybridBackend:
+    """
+    Hybrid model: frozen CXR-CLIP image encoder + fine-tuned OpenCLIP text encoder.
+    Loads a merged checkpoint produced by train_lora.py with --cxrclip-checkpoint.
+    """
+
+    def __init__(
+        self,
+        cxrclip_image_checkpoint: str,
+        hybrid_merged_checkpoint: str,
+        text_model_name: str,
+        text_pretrained: str,
+        device: torch.device,
+    ):
+        sys.path.insert(0, str(REPO_ROOT))
+        import open_clip
+        from train.cxrclip_hybrid_model import CXRClipHybridModel
+
+        self.device = device
+
+        pretrained = text_pretrained if text_pretrained else None
+        openclip_model, _, _ = open_clip.create_model_and_transforms(
+            text_model_name, pretrained=pretrained, device="cpu"
+        )
+        self.tokenizer = open_clip.get_tokenizer(text_model_name)
+
+        model = CXRClipHybridModel(cxrclip_image_checkpoint, openclip_model)
+        del openclip_model
+
+        state = torch.load(hybrid_merged_checkpoint, map_location="cpu", weights_only=False)
+        model.load_state_dict(state, strict=True)
+        model.to(device).eval()
+        self.model = model
+
+        self.preprocess = CXRClipHybridModel.make_preprocess(cxrclip_image_checkpoint)
+        log.info(f"Loaded hybrid model from {hybrid_merged_checkpoint}")
+
+    def encode_images(self, image_paths: list[Path], batch_size: int = 64) -> np.ndarray:
+        dataset = ImageFolderDataset(image_paths, self.preprocess)
+        loader = DataLoader(dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
+        all_embs = []
+        with torch.no_grad():
+            for batch in loader:
+                emb = self.model.encode_image(batch.to(self.device), normalize=False).float().cpu().numpy()
+                all_embs.append(emb)
+        return _normalize(np.concatenate(all_embs, axis=0))
+
+    def encode_texts(self, texts: list[str], batch_size: int = 256) -> np.ndarray:
+        all_embs = []
+        with torch.no_grad():
+            for i in range(0, len(texts), batch_size):
+                tokens = self.tokenizer(texts[i : i + batch_size]).to(self.device)
+                emb = self.model.encode_text(tokens, normalize=False).float().cpu().numpy()
+                all_embs.append(emb)
+        return _normalize(np.concatenate(all_embs, axis=0))
+
+
 class CXRClipBackend:
     """Loads a CXR-CLIP checkpoint (.pt) from the cxr-clip repo."""
 
@@ -283,7 +340,8 @@ def main():
         epilog=__doc__,
     )
     parser.add_argument("--model_type", required=True,
-                        choices=["vanilla_clip", "biomedclip", "cxrclip", "finetuned"],
+                        choices=["vanilla_clip", "biomedclip", "cxrclip", "finetuned",
+                                 "cxrclip_hybrid"],
                         help="Which model backend to use")
     parser.add_argument("--paired_dir", required=True,
                         help="Folder with *.jpg symlinks (output of build_baseline.py)")
@@ -304,6 +362,16 @@ def main():
                         help="open_clip pretrained tag for --model_type finetuned, e.g. openai")
     parser.add_argument("--finetuned_checkpoint", default=None,
                         help="Path to final_merged.pt (required for --model_type finetuned)")
+    parser.add_argument("--cxrclip_image_checkpoint", default=None,
+                        help="Path to original CXR-CLIP checkpoint (.pt) used as image encoder "
+                             "(required for --model_type cxrclip_hybrid)")
+    parser.add_argument("--hybrid_merged_checkpoint", default=None,
+                        help="Path to final_merged.pt from train_lora.py with --cxrclip-checkpoint "
+                             "(required for --model_type cxrclip_hybrid)")
+    parser.add_argument("--hybrid_text_model", default="ViT-B-32",
+                        help="OpenCLIP model name used as text encoder in the hybrid model")
+    parser.add_argument("--hybrid_text_pretrained", default="openai",
+                        help="OpenCLIP pretrained tag for the hybrid text encoder")
     parser.add_argument("--name", default=None,
                         help="Override output filename stem, e.g. 'lora_vitb32'. "
                              "Saves to results_{name}.csv. Defaults to model_type.")
@@ -315,6 +383,8 @@ def main():
         parser.error("--cxrclip_checkpoint is required when --model_type is cxrclip")
     if args.model_type == "finetuned" and not (args.finetuned_base_model and args.finetuned_checkpoint):
         parser.error("--finetuned_base_model and --finetuned_checkpoint are required for --model_type finetuned")
+    if args.model_type == "cxrclip_hybrid" and not (args.cxrclip_image_checkpoint and args.hybrid_merged_checkpoint):
+        parser.error("--cxrclip_image_checkpoint and --hybrid_merged_checkpoint are required for --model_type cxrclip_hybrid")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     log.info(f"Device: {device}")
@@ -336,6 +406,14 @@ def main():
             args.finetuned_checkpoint,
             device,
         )
+    elif args.model_type == "cxrclip_hybrid":
+        backend = CXRHybridBackend(
+            args.cxrclip_image_checkpoint,
+            args.hybrid_merged_checkpoint,
+            args.hybrid_text_model,
+            args.hybrid_text_pretrained,
+            device,
+        )
     else:
         backend = CXRClipBackend(args.cxrclip_checkpoint, device)
 
@@ -349,6 +427,10 @@ def main():
     # ── Encode images (with disk cache) ──────────────────────────────────────
     if args.cxrclip_checkpoint:
         cache_name = f"img_emb_{args.model_type}_{Path(args.cxrclip_checkpoint).stem}.npy"
+    elif args.model_type == "cxrclip_hybrid":
+        ckpt = Path(args.hybrid_merged_checkpoint)
+        img_stem = Path(args.cxrclip_image_checkpoint).stem
+        cache_name = f"img_emb_hybrid_{img_stem}_{ckpt.parent.name}_{ckpt.stem}.npy"
     elif args.model_type == "finetuned":
         ckpt = Path(args.finetuned_checkpoint)
         # Use parent dir name + stem so different experiments don't collide on "final_merged"

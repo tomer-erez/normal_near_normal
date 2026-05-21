@@ -34,6 +34,7 @@ python train_lora.py \
 """
 
 import argparse
+import copy
 import logging
 import math
 import os
@@ -51,6 +52,11 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, random_split
 from torch.utils.data.distributed import DistributedSampler
+
+try:
+    import wandb
+except ImportError:
+    wandb = None
 
 sys.path.insert(0, str(Path(__file__).parent / "open_clip" / "src"))
 import open_clip
@@ -96,15 +102,22 @@ def parse_args():
     # Model
     p.add_argument("--base-model", required=True,
                    help="open_clip model name, e.g. ViT-B-32 or "
-                        "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224")
+                        "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224. "
+                        "When --cxrclip-checkpoint is set, this specifies the OpenCLIP text "
+                        "encoder used in the hybrid model (e.g. ViT-B-32 --pretrained openai).")
     p.add_argument("--pretrained", default="",
                    help="open_clip pretrained tag, e.g. 'openai'. Leave blank for hf-hub models.")
+    p.add_argument("--cxrclip-checkpoint", default=None,
+                   help="Path to a CXR-CLIP checkpoint (.pt). When provided, creates a hybrid "
+                        "model that uses the CXR-CLIP image encoder (frozen) paired with an "
+                        "OpenCLIP text encoder specified by --base-model / --pretrained. "
+                        "E.g. valid_pretrained_models_to_try/r50_mc.pt")
     # Data
-    p.add_argument("--train-csv", required=True)
-    p.add_argument("--image-dir", required=True)
+    p.add_argument("--train-csv", required=False,default="cxr_data/mimic_cxr_train.csv")
+    p.add_argument("--image-dir", required=False,default="cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/")
     p.add_argument("--val-csv", default=None,
                    help="Separate validation CSV. If omitted, --val-split is used instead.")
-    p.add_argument("--val-split", type=float, default=0.05,
+    p.add_argument("--val-split", type=float, default=0.1,
                    help="Fraction of training data held out for validation when --val-csv is not given. "
                         "Set to 0 to disable validation entirely.")
     p.add_argument("--caption-mode", default="both", choices=["single", "pair", "both"])
@@ -164,6 +177,13 @@ def parse_args():
                         "Compatible with all --match-mode options. "
                         "SigLIP models (ViT-B-16-SigLIP etc.) expose a logit_bias parameter that "
                         "is picked up automatically; vanilla CLIP models work fine without it.")
+    # Weights & Biases
+    p.add_argument("--wandb-project", default=None,
+                   help="W&B project name. Omit to disable W&B logging.")
+    p.add_argument("--wandb-run-name", default=None,
+                   help="W&B run name (auto-generated if omitted).")
+    p.add_argument("--wandb-entity", default=None,
+                   help="W&B entity (team/user). Uses your default entity if omitted.")
     return p.parse_args()
 
 
@@ -257,7 +277,7 @@ def apply_lora(model, args):
 
 def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch,
                     amp_dtype, total_epochs, report_interval_steps, grad_accum_steps=1,
-                    is_main=True, is_siglip=False):
+                    is_main=True, is_siglip=False, global_step=0):
     model.train()
     raw = _raw_model(model)
     total_loss = 0.0
@@ -319,12 +339,15 @@ def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch,
             with torch.no_grad():
                 raw.logit_scale.clamp_(0, math.log(100))
 
-        total_loss += loss.item() * grad_accum_steps
+        step_loss = loss.item() * grad_accum_steps
+        total_loss += step_loss
         if is_main and step % report_interval_steps == 0:
             log.info(
                 f"  epoch {epoch}/{total_epochs} step {step}/{len(loader)}"
-                f"  loss={loss.item() * grad_accum_steps:.4f}"
+                f"  loss={step_loss:.4f}"
             )
+            if wandb is not None and wandb.run is not None:
+                wandb.log({"train/loss_step": step_loss}, step=global_step + step)
 
     return total_loss / len(loader)
 
@@ -390,6 +413,17 @@ def main():
     if is_main:
         output_dir.mkdir(parents=True, exist_ok=True)
 
+    if is_main and args.wandb_project:
+        if wandb is None:
+            raise ImportError("wandb is not installed. Run: pip install wandb")
+        wandb.init(
+            project=args.wandb_project,
+            name=args.wandb_run_name,
+            entity=args.wandb_entity,
+            config=vars(args),
+            dir=str(output_dir),
+        )
+
     device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
     if is_main:
         log.info(f"Device: {device}  world_size: {world_size}")
@@ -404,14 +438,33 @@ def main():
         amp_dtype = torch.bfloat16
 
     # ── Base model ────────────────────────────────────────────────────────────
-    if is_main:
-        log.info(f"Loading base model: {args.base_model} pretrained={args.pretrained!r}")
     pretrained = args.pretrained if args.pretrained else None
-    model, preprocess_train, _ = open_clip.create_model_and_transforms(
-        args.base_model, pretrained=pretrained, device=device
-    )
-    tokenizer = open_clip.get_tokenizer(args.base_model)
-    model.requires_grad_(False)
+
+    if args.cxrclip_checkpoint:
+        # Hybrid mode: frozen CXR-CLIP image encoder + trainable OpenCLIP text encoder
+        if is_main:
+            log.info(
+                f"Hybrid mode — CXR-CLIP image encoder from: {args.cxrclip_checkpoint}  "
+                f"OpenCLIP text encoder: {args.base_model} pretrained={args.pretrained!r}"
+            )
+        from train.cxrclip_hybrid_model import CXRClipHybridModel
+        openclip_model, _, _ = open_clip.create_model_and_transforms(
+            args.base_model, pretrained=pretrained, device="cpu"
+        )
+        model = CXRClipHybridModel(args.cxrclip_checkpoint, openclip_model)
+        del openclip_model
+        preprocess_train = CXRClipHybridModel.make_preprocess(args.cxrclip_checkpoint)
+        tokenizer = open_clip.get_tokenizer(args.base_model)
+        # image_encoder and image_projection are already frozen inside CXRClipHybridModel;
+        # text components are trainable. LoRA will be applied to text Linear layers.
+    else:
+        if is_main:
+            log.info(f"Loading base model: {args.base_model} pretrained={args.pretrained!r}")
+        model, preprocess_train, _ = open_clip.create_model_and_transforms(
+            args.base_model, pretrained=pretrained, device=device
+        )
+        tokenizer = open_clip.get_tokenizer(args.base_model)
+        model.requires_grad_(False)
 
     # ── Apply LoRA ────────────────────────────────────────────────────────────
     model = apply_lora(model, args)
@@ -568,6 +621,7 @@ def main():
 
     best_val_loss = float("inf")
     best_epoch = 0
+    global_step = 0
 
     # ── Training loop ─────────────────────────────────────────────────────────
     if is_main:
@@ -586,7 +640,9 @@ def main():
             device, epoch, amp_dtype, args.epochs,
             args.report_interval_steps, args.grad_accum_steps,
             is_main=is_main, is_siglip=is_siglip,
+            global_step=global_step,
         )
+        global_step += len(train_loader)
 
         val_loss = None
         if val_loader is not None:
@@ -613,8 +669,20 @@ def main():
                     f"Epoch {epoch}/{args.epochs} — train={train_loss:.4f}  lr={current_lr:.2e}"
                 )
 
+            if wandb is not None and wandb.run is not None:
+                raw = _raw_model(model)
+                epoch_metrics = {
+                    "epoch": epoch,
+                    "train/loss": train_loss,
+                    "train/lr": current_lr,
+                    "train/logit_scale": raw.logit_scale.exp().item(),
+                }
+                if val_loss is not None:
+                    epoch_metrics["val/loss"] = val_loss
+                wandb.log(epoch_metrics, step=global_step)
+
             monitor_loss = val_loss if val_loss is not None else train_loss
-            if monitor_loss < best_val_loss:
+            if (monitor_loss < best_val_loss) or epoch == 1:
                 best_val_loss = monitor_loss
                 best_epoch = epoch
                 best_path = output_dir / "best_adapter.pt"
@@ -625,6 +693,12 @@ def main():
                     f"  ↑ New best ({'val' if val_loss is not None else 'train'})"
                     f" loss={best_val_loss:.4f} → {best_path}"
                 )
+                tmp = copy.deepcopy(raw).cpu()
+                merged = tmp.merge_and_unload()
+                merged_path = output_dir / "final_merged.pt"
+                torch.save(merged.state_dict(), merged_path)
+                log.info(f"  Merged best-epoch model saved → {merged_path}")
+                del tmp, merged
 
             if epoch % args.save_frequency == 0:
                 ckpt_path = output_dir / f"epoch_{epoch}_adapter.pt"
@@ -654,21 +728,21 @@ def main():
 
     # ── Merge LoRA into base model and save (rank 0 only) ─────────────────────
     if is_main:
-        raw = _raw_model(model)
-        # Merge from the best checkpoint rather than the final epoch. This matters
-        # when early stopping fires: the current model could be several epochs past
-        # the best validation loss.
-        best_path = output_dir / "best_adapter.pt"
-        if best_path.exists():
-            log.info(f"Loading best adapter from {best_path} before merging …")
-            state = torch.load(best_path, map_location="cpu")
-            raw.load_state_dict(state, strict=False)
-        log.info("Merging LoRA weights into base model …")
-        merged_model = raw.merge_and_unload()
         merged_path = output_dir / "final_merged.pt"
-        torch.save(merged_model.state_dict(), merged_path)
-        log.info(f"Merged model saved → {merged_path}")
+        if merged_path.exists():
+            log.info(f"final_merged.pt already up-to-date (best epoch {best_epoch}).")
+        else:
+            # Fallback: reached only when no best epoch was ever saved (e.g. no validation
+            # and training was cut before any improvement over the initial inf sentinel).
+            raw = _raw_model(model)
+            log.info("Merging LoRA weights into base model …")
+            merged_model = raw.merge_and_unload()
+            torch.save(merged_model.state_dict(), merged_path)
+            log.info(f"Merged model saved → {merged_path}")
         log.info("Done.")
+
+    if is_main and wandb is not None and wandb.run is not None:
+        wandb.finish()
 
     if world_size > 1:
         dist.destroy_process_group()
