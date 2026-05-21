@@ -85,12 +85,20 @@ MODELS = [
     #     "finetuned_checkpoint": "experiments/lora_biomedclip_with_5_ep/final_merged.pt",
     # },
     {
-        "name": "vanilla_ft",
+        "name": "vanilla_clip_loss",
         "model_type": "finetuned",
         "checkpoint": None,
         "finetuned_base_model": "ViT-B-32",
         "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/_vanilla_bsz16x8_just_for_merge/final_merged.pt",
+        "finetuned_checkpoint": "experiments/_vanilla_bsz16x8/final_merged.pt",
+    },
+        {
+        "name": "vanilla_siglip_loss",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/_vanilla_bsz16x8_with_siglip/final_merged.pt",
     },
 ]
 
