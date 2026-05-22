@@ -43,7 +43,7 @@ No embedding happens here.
 python baseline_eval/run_all_evals.py \
     --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
     --csv        cxr_data/mimic_cxr_official_test.csv \
-    --output_dir ./experiments/my_exp1 \
+    --output_dir ./eval_outputs/my_exp1 \
     --batch_size 64
 
 For each model in the MODELS list (run_all_evals.py):
@@ -59,7 +59,7 @@ Saves per-model CSVs + summary CSVs + plots to --output_dir.
 python baseline_eval/run_all_evals.py \
     --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
     --csv        cxr_data/mimic_cxr_official_test.csv \
-    --output_dir ./experiments/my_exp1 \
+    --output_dir ./eval_outputs/my_exp1 \
     --batch_size 64 --skip_existing
 
 
@@ -391,7 +391,7 @@ python train_lora.py --base-model ViT-B-32 --pretrained openai \
 # Evaluate all six together:
 python baseline_eval/run_all_evals.py \
     --paired_dir $PAIRED_DIR --csv $TEST_CSV \
-    --output_dir ./experiments/exp1_results --batch_size 64
+    --output_dir ./eval_outputs/exp1_results --batch_size 64
 
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -1195,7 +1195,7 @@ MODELS list in baseline_eval/run_all_evals.py, then run:
 python baseline_eval/run_all_evals.py \
     --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
     --csv        cxr_data/mimic_cxr_official_test.csv \
-    --output_dir ./experiments/all_results \
+    --output_dir ./eval_outputs/all_results \
     --batch_size 64 --skip_existing
 
 Produces summary CSVs + heatmaps + bar charts in ./experiments/all_results/.

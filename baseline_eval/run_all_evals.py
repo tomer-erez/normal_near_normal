@@ -100,6 +100,22 @@ MODELS = [
         "finetuned_pretrained": "",
         "finetuned_checkpoint": "experiments/_vanilla_bsz16x8_with_siglip/final_merged.pt",
     },
+            {
+        "name": "ft_swint_siglip_loss",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/fine_tuned_cxr_and_siglip/final_merged.pt",
+    },
+                {
+        "name": "ft_swint_clip_loss",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/fine_tuned_cxr_and_cliploss/final_merged.pt",
+    },
 ]
 
 KS = [1, 5, 10]

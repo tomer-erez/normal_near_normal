@@ -427,7 +427,9 @@ def main():
     device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
     if is_main:
         log.info(f"Device: {device}  world_size: {world_size}")
-
+    # Print all arguments
+    for arg, value in vars(args).items():
+        log.info(f"{arg}: {value}")
     # ── Precision ─────────────────────────────────────────────────────────────
     amp_dtype = None
     scaler = None
