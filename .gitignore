@@ -239,11 +239,7 @@ baseline_output_1000_clip_vanilla/
 
 baseline_output/
 
-eval_outputs/
-
-/eval_outputs
-
-./eval_outputs
+eval_outputs/baseline_output_official_test
 
 experiments/
 

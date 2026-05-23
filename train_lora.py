@@ -42,6 +42,10 @@ import ssl
 import sys
 from pathlib import Path
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
 # Bypass SSL verification for environments with corporate certificate inspection
 ssl._create_default_https_context = ssl._create_unverified_context
 os.environ.setdefault("CURL_CA_BUNDLE", "")
@@ -133,7 +137,7 @@ def parse_args():
                    help="Comma-separated module name substrings to target with LoRA")
     # Training
     p.add_argument("--output-dir", required=True)
-    p.add_argument("--epochs", type=int, default=10)
+    p.add_argument("--epochs", type=int, default=500)
     p.add_argument("--batch-size", type=int, default=8,
                    help="Per-GPU batch size. Effective batch = batch-size * grad-accum-steps * world-size")
     p.add_argument("--lr", type=float, default=1e-4)
@@ -624,6 +628,21 @@ def main():
     best_val_loss = float("inf")
     best_epoch = 0
     global_step = 0
+    train_loss_history: list[float] = []
+    val_loss_history: list[float] = []
+
+    def save_loss_plot():
+        epochs_so_far = list(range(1, len(train_loss_history) + 1))
+        fig, ax = plt.subplots()
+        ax.plot(epochs_so_far, train_loss_history, label="train")
+        if val_loss_history:
+            ax.plot(epochs_so_far, val_loss_history, label="val")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Loss")
+        ax.set_title("Training curve")
+        ax.legend()
+        fig.savefig(output_dir / "loss_curve.png", dpi=100, bbox_inches="tight")
+        plt.close(fig)
 
     # ── Training loop ─────────────────────────────────────────────────────────
     if is_main:
@@ -661,6 +680,11 @@ def main():
 
         # All logging and checkpointing only on rank 0
         if is_main:
+            train_loss_history.append(train_loss)
+            if val_loss is not None:
+                val_loss_history.append(val_loss)
+            save_loss_plot()
+
             if val_loss is not None:
                 log.info(
                     f"Epoch {epoch}/{args.epochs} — "
@@ -701,6 +725,11 @@ def main():
                 torch.save(merged.state_dict(), merged_path)
                 log.info(f"  Merged best-epoch model saved → {merged_path}")
                 del tmp, merged
+                #delete all adapter checkpoints except the best one to save space
+                for ckpt in output_dir.glob("epoch_*_adapter.pt"):
+                    if ckpt != best_path:
+                        ckpt.unlink()
+                log.info(f"  Deleted old adapter checkpoints, keeping only the best one: {best_path}")
 
             if epoch % args.save_frequency == 0:
                 ckpt_path = output_dir / f"epoch_{epoch}_adapter.pt"
@@ -742,6 +771,10 @@ def main():
             torch.save(merged_model.state_dict(), merged_path)
             log.info(f"Merged model saved → {merged_path}")
         log.info("Done.")
+        
+    if is_main:
+        for ckpt in output_dir.glob("epoch_*_adapter.pt"):
+            ckpt.unlink()
 
     if is_main and wandb is not None and wandb.run is not None:
         wandb.finish()

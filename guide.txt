@@ -2,10 +2,54 @@
  MIMIC-CXR CLIP FINE-TUNING — FULL GUIDE
 ================================================================================
 
-IMAGE DIR:
-  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/
+Shorthands (set in your shell or substitute inline):
+  PAIRED_DIR=./eval_outputs/baseline_output_official_test/paired_data
+  TEST_CSV=cxr_data/mimic_cxr_official_test.csv
+  BIOMEDCLIP=hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224
 
-(Shorthand used in commands below: IMAGE_DIR=cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files)
+--image-dir, --train-csv, and --output-dir are hardcoded in train_lora.py;
+omit them from all commands below unless overriding.
+
+
+================================================================================
+ RUNNING IN THE BACKGROUND  (run.sh)
+================================================================================
+
+Prefix any train_lora.py or run_all_evals.py command with "bash run.sh":
+
+  bash run.sh python train_lora.py --base-model ViT-B-32 --pretrained openai \
+      --match-mode negative_aware --loss clip \
+      --negative-weight 0.5 --negative-margin 0.0 \
+      --batch-size 128 --epochs 10 \
+      --wandb-project mimic-cxr-clip --wandb-run-name exp1d_negaware_clip
+
+The script derives the log filename from --wandb-run-name and writes:
+  logs/<name>.log   — all stdout/stderr
+  logs/<name>.pid   — PID for easy killing
+
+After launch it prints:
+  PID 12345
+    follow : tail -f logs/exp1d_negaware_clip.log
+    kill   : kill $(cat logs/exp1d_negaware_clip.pid)
+
+Works with torchrun too:
+  bash run.sh torchrun --nproc_per_node=4 train_lora.py ...
+
+
+================================================================================
+ WEIGHTS & BIASES (W&B) TRACKING
+================================================================================
+
+Both scripts support W&B via:
+  --wandb-project  PROJECT   required to enable logging
+  --wandb-run-name NAME      display name for the run
+  --wandb-entity   ENTITY    team/user (uses your default if omitted)
+
+Training logs: train/loss_step (per step), train/loss, val/loss, train/lr,
+               train/logit_scale (per epoch).
+Eval logs:     eval/macro_summary table, per-model scalar metrics, all PNGs.
+
+Use the same --wandb-project for training and eval to compare runs.
 
 
 ================================================================================
@@ -20,124 +64,68 @@ python baseline_eval/create_train_test_sets.py \
     --out_train cxr_data/mimic_cxr_train.csv \
     --out_test  cxr_data/mimic_cxr_official_test.csv
 
-Filters the 377k-row all_txt_data_and_labels.csv into official MIMIC-CXR train
-and test splits. Produces:
-  cxr_data/mimic_cxr_train.csv         ~227k rows for training
-  cxr_data/mimic_cxr_official_test.csv   5,159 rows (official test split)
+Produces ~227k train rows and 5,159 official test rows.
 
 
---- Step 1 — Build the image gallery (run once per eval setup) ---
+--- Step 1 — Build the image gallery (run once) ---
 
 python baseline_eval/build_baseline.py \
     --csv        cxr_data/mimic_cxr_official_test.csv \
     --output_dir ./eval_outputs/baseline_output_official_test
 
-Creates symlinks for all 5,159 test images in
+Creates symlinks + paired .txt files for 5,159 test images in
 eval_outputs/baseline_output_official_test/paired_data/.
-Each image gets a matching .txt file with its radiology report.
-No embedding happens here.
 
 
---- Step 2 — Run all model evaluations ---
+--- Step 2 — Evaluate all models and compare ---
 
 python baseline_eval/run_all_evals.py \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv        cxr_data/mimic_cxr_official_test.csv \
-    --output_dir ./eval_outputs/my_exp1 \
-    --batch_size 64
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV \
+    --output_dir ./eval_outputs/all_results --batch_size 64 \
+    --wandb-project mimic-cxr-clip --wandb-run-name all_results
 
-For each model in the MODELS list (run_all_evals.py):
-  - Loads images from paired_data/, encodes with the model
-  - Encodes 247 text queries (13 single + 78 pair + 156 negative)
-  - Retrieves top-k images per query by cosine similarity
-  - Ground truth: images where the queried label(s) == 1
-  - Reports P@1, P@5, P@10 and R@1, R@5, R@10
-
-Saves per-model CSVs + summary CSVs + plots to --output_dir.
-
-# Re-run only missing models (GPU was busy, model was added later):
-python baseline_eval/run_all_evals.py \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv        cxr_data/mimic_cxr_official_test.csv \
-    --output_dir ./eval_outputs/my_exp1 \
-    --batch_size 64 --skip_existing
+Add --skip_existing to skip models already evaluated. Produces per-model
+result CSVs, summary_macro.csv, and plots/ in --output_dir.
 
 
 ================================================================================
- TRAINING  (train_lora.py)
+ TRAINING QUICK REFERENCE
 ================================================================================
 
 # Smoke test — verify pipeline end-to-end (tiny subset)
-python train_lora.py \
-    --base-model ViT-S-32-alt \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/smoke \
-    --batch-size 4 --epochs 1 --max-samples 8
-
-# Vanilla CLIP ViT-B-32 (standard loss, diagonal-only pairs)
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  $IMAGE_DIR \
-    --output-dir ./experiments/lora_vitb32 \
-    --batch-size 128 --epochs 10
-
-# BiomedCLIP (batch 32 + grad-accum 4 to fit 11 GB VRAM)
-python train_lora.py \
-    --base-model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  $IMAGE_DIR \
-    --output-dir ./experiments/lora_biomedclip \
-    --batch-size 32 --grad-accum-steps 4 --epochs 10 \
-    --lora-modules "qkv,proj,fc1,fc2,query,key,value"
+python train_lora.py --base-model ViT-S-32-alt \
+    --batch-size 4 --epochs 1 --max-samples 8 \
+    --wandb-project mimic-cxr-clip --wandb-run-name smoke
 
 # Resume from checkpoint
 python train_lora.py ... --resume ./experiments/lora_vitb32/epoch_5_adapter.pt
 
-# Multi-GPU (4 GPUs)
+# Multi-GPU — standard mode only; for label-aware use larger --batch-size instead
 CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 train_lora.py \
     --base-model ViT-B-32 --pretrained openai \
-    --train-csv  $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp_4gpu \
-    --match-mode standard --batch-size 64 --epochs 10
-# Effective batch = 64 * 4 = 256 (all-gather sees all GPUs' embeddings)
-# Note: label-aware modes mine positives within the LOCAL batch per GPU only.
-# For label-aware + multi-GPU, increase --batch-size instead of using torchrun.
+    --match-mode standard --batch-size 64 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp_4gpu
 
-Outputs:
-  experiments/<name>/epoch_N_adapter.pt   LoRA adapter weights (~11 MB)
-  experiments/<name>/final_merged.pt      Merged model used by eval
+Outputs per run:
+  experiments/<name>/epoch_N_adapter.pt   LoRA adapter (~11 MB)
+  experiments/<name>/final_merged.pt      Merged model for eval
 
 
 ================================================================================
- EVAL A SINGLE MODEL  (baseline_eval/eval_model.py)
+ EVAL QUICK REFERENCE  (single model)
 ================================================================================
 
-# Fine-tuned ViT-B-32
 python baseline_eval/eval_model.py \
-    --model_type finetuned --name lora_vitb32 \
+    --model_type finetuned --name <name> \
     --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
-    --finetuned_checkpoint ./experiments/lora_vitb32/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
-
-# Fine-tuned BiomedCLIP
-python baseline_eval/eval_model.py \
-    --model_type finetuned --name lora_biomedclip \
-    --finetuned_base_model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 \
-    --finetuned_checkpoint ./experiments/lora_biomedclip/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
+    --finetuned_checkpoint ./experiments/<name>/final_merged.pt \
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV
 
 # Baselines (no fine-tuning)
 python baseline_eval/eval_model.py --model_type vanilla_clip \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
-
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV
 python baseline_eval/eval_model.py --model_type biomedclip \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV
 
 # Limit to a specific query mode (default: all)
 ... --query_mode negative
@@ -162,8 +150,6 @@ Edit the MODELS list in baseline_eval/run_all_evals.py:
  LABEL ENCODING
 ================================================================================
 
-CSV value → tensor encoding:
-
   CSV value  Meaning                          Tensor value
   ---------  -------------------------------- ------------
       1      Pathology positively mentioned   1.0  (positive)
@@ -171,668 +157,268 @@ CSV value → tensor encoding:
      NaN     Label not mentioned in report    -1.0 (negative — same as 0)
      -1      Ambiguous / uncertain mention    0.0  (ignored)
 
-NaN and 0 are both treated as -1.0: a finding absent from the report is
-functionally the same as one explicitly ruled out. Only -1 (uncertain language
-like "possible" or "cannot exclude") is ignored — no clean signal either way.
-
-Consequence for conflict detection: if sample A has Edema=1 and sample B has
-Edema=NaN, they are flagged as a conflict in negative_aware mode.
+NaN and 0 are both treated as -1.0: absence of evidence = evidence of absence.
+Only -1 (uncertain language like "possible" or "cannot exclude") is ignored.
+Consequence: if sample A has Edema=1 and B has Edema=NaN, they are flagged as
+a conflict in negative_aware mode.
 
 
 ================================================================================
  KNOB 1 — CAPTION MODE  (--caption-mode)
 ================================================================================
 
-Controls the text caption paired with each image during training.
-Captions are built from the image's POSITIVE (value=1) labels only.
-
   single   One random positive label         "atelectasis"
   pair     Two random positive labels        "fracture and edema"
-  both     Randomly single or pair           (DEFAULT)
-           (75% single, 25% pair — weighted toward single to match eval distribution)
+  both     Randomly single or pair           (DEFAULT, 75%/25%)
 
-Recommendation: keep --caption-mode both (default). Eval uses both single and
-pair query types, so training on a mix generalises better.
+Keep both (default) — eval uses both single and pair query types.
 
 
 ================================================================================
  KNOB 2 — MATCH MODE  (--match-mode)
 ================================================================================
 
-Controls which (image, text) pairs in the batch are treated as positives.
+Controls which (image, text) pairs count as positives. Standard CLIP uses only
+the diagonal — harmful in multi-label data where two images with identical
+findings should attract each other.
 
-WHY THIS MATTERS
-----------------
-Standard CLIP treats each (image_i, text_i) as the one and only positive for
-sample i, pushing every other sample away as a negative. In a multi-label
-medical dataset this is wrong: if image A and image B both show "Edema and
-Pleural Effusion", pulling image A away from text B is a harmful training signal.
-The label-aware modes fix this by identifying which pairs share pathology labels.
+  standard       Diagonal-only. Uses ClipLoss with distributed all-gather.
+  single_label   Positive if >= 1 shared label. Soft target matrix.
+  two_label      Positive if >= 2 shared labels. Pair with --caption-mode pair.
+  negative_aware single_label + hinge repulsion for conflict pairs
+                 (one sample label=1, other label=0/NaN).
+                 Extra flags: --negative-weight lambda (default 0.5)
+                              --negative-margin tau   (default 0.0)
 
-MODES
------
-  standard
-    Diagonal-only pairs (vanilla CLIP). Each sample is its own positive.
-    Uses open_clip's ClipLoss with full distributed all-gather. Good baseline.
-
-  single_label
-    Two samples are a positive pair if they share ≥1 label with value 1.
-    Loss target is a soft matrix: probability mass split equally across all
-    in-batch positives so each row still sums to 1.
-
-  two_label
-    Same as single_label but threshold is ≥2 shared positive labels.
-    More selective — reduces noise from coincidentally shared single labels.
-    Best paired with --caption-mode pair (captions name two labels).
-
-  negative_aware
-    Builds on single_label (threshold ≥1) and adds explicit REPULSION for
-    conflict pairs. A conflict = one sample has a label = 1.0 and the other
-    has the same label = -1.0 (CSV 0 or NaN).
-    Conflicting pairs are pushed apart with a hinge loss.
-    Extra flags:
-      --negative-weight λ  weight for repulsion term  (default 0.5)
-      --negative-margin τ  cosine-sim threshold; pairs below τ are not penalised
-                           (default 0.0 — penalise any positive similarity)
-
-Diagnostics logged at step 0 of each epoch (label-aware modes only):
-  avg_positives_per_sample  should be >1.0; if ≈1.0 the batch is too small
-                            or labels too sparse → increase --batch-size
-  diagonal_only (%)         samples with no in-batch positive partner; keep <20%
-  conflict_pairs (%)        pairs being repelled (negative_aware only)
+Diagnostics logged at step 0 of each epoch (label-aware modes):
+  avg_positives_per_sample  should be >1.0; if ~1.0 -> increase --batch-size
+  diagonal_only (%)         keep <20%
+  conflict_pairs (%)        5-15% is healthy for negative_aware
 
 
 ================================================================================
  KNOB 3 — LOSS VARIANT  (--loss)
 ================================================================================
 
-Orthogonal to --match-mode: any combination is valid.
+  clip    (DEFAULT) Softmax multi-positive cross-entropy per row.
+  siglip  Sigmoid binary BCE per pair — loss decoupled from batch size.
 
-  clip    (DEFAULT) Softmax multi-positive cross-entropy.
-          Each row of the B×B similarity matrix is normalised via softmax.
-          Non-matching pairs are implicit negatives via the softmax denominator.
-          Formula (label-aware):
-            target[i,j] = (shared ≥k labels AND no conflict) / row_sum
-            L_i2t = -Σ_j target[i,j] · log_softmax(logits)[i,j]
-            L_t2i = same with logits transposed
-            L_clip = (L_i2t + L_t2i) / 2
-            L_total = L_clip + λ · relu(sim[conflict] - τ).mean()  [negative_aware]
-
-  siglip  Sigmoid binary cross-entropy, one independent term per pair.
-          No softmax denominator — each (image_i, text_j) is a binary decision:
-            target[i,j] = +1 if positive pair, −1 if negative/conflicting
-            loss[i,j]   = −logsigmoid(target[i,j] · logits[i,j])
-          Key advantage: loss per pair is decoupled from batch size.
-          Conflicting pairs already receive target −1 so SigLIP provides
-          per-pair repulsion without a separate hinge (hinge still added in
-          negative_aware mode for extra emphasis).
-
-Tuning λ (--negative-weight) and τ (--negative-margin):
-  λ = 0.5   balanced start
-  λ = 0.25  if training loss is unstable
-  λ = 1.0   aggressive repulsion
-  τ = 0.0   penalise any positive cosine similarity between conflict pairs
-  τ = -0.2  more lenient (only penalise if already fairly similar)
-  τ = 0.2   more aggressive (push apart even if similarity is low)
+Both work with any --match-mode. Tuning lambda/tau for negative_aware:
+  lambda = 0.25  conservative (use if training is unstable)
+  lambda = 0.5   default balanced
+  lambda = 1.0   aggressive repulsion
+  tau = 0.0      penalise any positive conflict similarity (default)
+  tau = 0.2      more aggressive
 
 
 ================================================================================
  KNOB 4 — QUERY MODE  (--query_mode, eval only)
 ================================================================================
 
-  Mode      N queries  Query text example            Relevant images
-  --------  ---------  ----------------------------  ----------------------------------
-  single    13         "atelectasis"                 label_A == 1
-  pair      78         "atelectasis and edema"       label_A == 1 AND label_B == 1
-  negative  156        "atelectasis and no edema"    label_A == 1 AND label_B == 0/NaN
-  all       247        all of the above              (DEFAULT)
-
-negative mode: label_B == -1 (uncertain) does NOT count as absent.
+  single    13 queries   "atelectasis"               label_A == 1
+  pair      78 queries   "atelectasis and edema"     label_A == 1 AND label_B == 1
+  negative  156 queries  "atelectasis and no edema"  label_A == 1 AND label_B == 0/NaN
+  all       247 queries  all of the above            (DEFAULT)
 
 
 ================================================================================
- RECIPES
+ RECIPES (quick-reference)
 ================================================================================
 
-  Recipe A — Baseline (vanilla CLIP loss, diagonal pairs)
-    python train_lora.py ... --match-mode standard --loss clip
+  Recipe A — Baseline (vanilla CLIP, diagonal pairs)
+    --match-mode standard --loss clip
 
   Recipe B — Soft positives (single label match, CLIP loss)
-    python train_lora.py ... --match-mode single_label
+    --match-mode single_label
 
   Recipe C — Strict positives (two shared labels)
-    python train_lora.py ... --match-mode two_label --caption-mode pair
+    --match-mode two_label --caption-mode pair
 
-  Recipe D — Full negative-aware CLIP (attract similar, repel conflicting)
-    python train_lora.py ... --match-mode negative_aware \
-        --negative-weight 0.5 --negative-margin 0.0
+  Recipe D — Negative-aware CLIP
+    --match-mode negative_aware --negative-weight 0.5 --negative-margin 0.0
 
-  Recipe E — SigLIP loss, label-aware (per-pair binary signal)
-    python train_lora.py ... --loss siglip --match-mode single_label
+  Recipe E — SigLIP loss, label-aware
+    --loss siglip --match-mode single_label
 
-  Recipe F — SigLIP + negative-aware (strongest repulsion signal)
-    python train_lora.py ... --loss siglip --match-mode negative_aware \
-        --negative-weight 0.5 --negative-margin 0.0
+  Recipe F — SigLIP + negative-aware (strongest repulsion)
+    --loss siglip --match-mode negative_aware --negative-weight 0.5 --negative-margin 0.0
 
 
 ================================================================================
  DESIGN NOTES
 ================================================================================
 
-Label-aware modes operate on the LOCAL batch only (no cross-GPU label
-gathering). For distributed runs, positive mining is per-GPU. Standard mode
-retains full distributed all-gather via open_clip's ClipLoss / SigLipLoss.
+Label-aware modes operate on the LOCAL batch only. For multi-GPU, positive
+mining is per-GPU; standard mode retains full all-gather. For label-aware +
+multi-GPU, increase --batch-size rather than using torchrun.
 
-Conflict detection covers both explicit negatives (CSV 0) and missing labels
-(NaN), since both are encoded as -1.0. A pair where one report confirms a
-finding and the other simply does not mention it will be flagged as conflicting
-in negative_aware mode.
-
-Uncertain labels (CSV -1, encoded as 0.0) are fully ignored: they contribute
-neither to positive overlap counting nor to conflict detection.
+Conflict detection covers CSV 0 AND NaN (both -> -1.0). Uncertain labels
+(CSV -1 -> 0.0) are fully ignored in both positive matching and conflict
+detection.
 
 
 ================================================================================
- RESEARCH EXPERIMENTS — full commands
+ EXPERIMENTS
 ================================================================================
 
-Shorthands used below:
-  TRAIN_CSV=cxr_data/mimic_cxr_train.csv
-  IMAGE_DIR=cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files
-  TEST_CSV=cxr_data/mimic_cxr_official_test.csv
-  PAIRED_DIR=./eval_outputs/baseline_output_official_test/paired_data
-
 
 ────────────────────────────────────────────────────────────────────────────────
-EXP 1 — BASELINE GRID (match-mode × loss)
-────────────────────────────────────────────────────────────────────────────────
+IDEA 1 — stronger, larger models
+What: Test whether more powerful models and loss functions improve retrieval.
+      Each recipe below is a full training + eval pipeline. Run all to
+      compare side-by-side in W&B and summary_macro.csv.
+________________________________________________________________________________
 
-# 1a. Vanilla CLIP (diagonal, softmax)
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp1_standard_clip \
-    --match-mode standard --loss clip --batch-size 128 --epochs 10
-
-# 1b. Single-label soft positives
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp1_single_clip \
-    --match-mode single_label --loss clip --batch-size 128 --epochs 10
-
-# 1c. Two-label + pair captions
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp1_two_clip \
-    --match-mode two_label --caption-mode pair --loss clip \
-    --batch-size 128 --epochs 10
-
-# 1d. Negative-aware CLIP
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp1_negaware_clip \
-    --match-mode negative_aware --loss clip \
-    --negative-weight 0.5 --negative-margin 0.0 \
-    --batch-size 128 --epochs 10
-
-# 1e. Single-label SigLIP
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp1_single_siglip \
-    --match-mode single_label --loss siglip --batch-size 128 --epochs 10
-
-# 1f. Negative-aware SigLIP (strongest repulsion)
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp1_negaware_siglip \
-    --match-mode negative_aware --loss siglip \
-    --negative-weight 0.5 --negative-margin 0.0 \
-    --batch-size 128 --epochs 10
-
-# Evaluate all six together:
-python baseline_eval/run_all_evals.py \
-    --paired_dir $PAIRED_DIR --csv $TEST_CSV \
-    --output_dir ./eval_outputs/exp1_results --batch_size 64
-
-
-────────────────────────────────────────────────────────────────────────────────
-EXP 2 — BATCH SIZE EFFECT ON LABEL-AWARE MINING
-────────────────────────────────────────────────────────────────────────────────
-Label-aware modes depend on how many positive partners appear in the same batch.
-Larger batches = more in-batch positives = stronger signal.
-Watch avg_positives_per_sample in logs; if ≈1.0, increase --batch-size.
-
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp2_bs32 \
-    --match-mode single_label --batch-size 32 --epochs 10
-
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp2_bs128 \
-    --match-mode single_label --batch-size 128 --epochs 10
-
-# Note: --grad-accum-steps does NOT increase the label matrix size (still
-# per-step batch). For label-aware mining use larger --batch-size, not accum.
-
-
-────────────────────────────────────────────────────────────────────────────────
-EXP 3 — LORA ENCODER TARGET ABLATION
-────────────────────────────────────────────────────────────────────────────────
-Does fine-tuning the image encoder, text encoder, or both matter most?
-
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp3_image_only \
-    --match-mode single_label --lora-target image \
-    --batch-size 128 --epochs 10
-
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp3_text_only \
-    --match-mode single_label --lora-target text \
-    --batch-size 128 --epochs 10
-
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp3_both \
-    --match-mode single_label --lora-target both \
-    --batch-size 128 --epochs 10
-
-
-────────────────────────────────────────────────────────────────────────────────
-EXP 4 — LORA RANK ABLATION
-────────────────────────────────────────────────────────────────────────────────
-Default r=16. ViT-B-32 has ~154M params; LoRA at r=16 adds ~1.9% (~2.9M).
-Rule of thumb: keep lora-alpha = 2 × lora-r.
-
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp4_r4 \
-    --match-mode single_label --lora-r 4 --lora-alpha 8 \
-    --batch-size 128 --epochs 10
-
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp4_r16 \
-    --match-mode single_label --lora-r 16 --lora-alpha 32 \
-    --batch-size 128 --epochs 10
-
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp4_r64 \
-    --match-mode single_label --lora-r 64 --lora-alpha 128 \
-    --batch-size 128 --epochs 10
-
-
-────────────────────────────────────────────────────────────────────────────────
-EXP 5 — NEGATIVE-AWARE REPULSION STRENGTH
-────────────────────────────────────────────────────────────────────────────────
-Tuning λ and τ. Evaluate specifically on negative queries for clearest signal.
-
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp5_negaware_w025 \
-    --match-mode negative_aware --loss clip \
-    --negative-weight 0.25 --negative-margin 0.0 \
-    --batch-size 128 --epochs 10
-
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp5_negaware_w05 \
-    --match-mode negative_aware --loss clip \
-    --negative-weight 0.5 --negative-margin 0.0 \
-    --batch-size 128 --epochs 10
-
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp5_negaware_w10 \
-    --match-mode negative_aware --loss clip \
-    --negative-weight 1.0 --negative-margin 0.0 \
-    --batch-size 128 --epochs 10
-
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp5_negaware_margin02 \
-    --match-mode negative_aware --loss clip \
-    --negative-weight 0.5 --negative-margin 0.2 \
-    --batch-size 128 --epochs 10
-
-# Eval negative queries only:
-python baseline_eval/eval_model.py \
-    --model_type finetuned --name exp5_negaware_w05 \
-    --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
-    --finetuned_checkpoint ./experiments/exp5_negaware_w05/final_merged.pt \
-    --paired_dir $PAIRED_DIR --csv $TEST_CSV --query_mode negative
-
-
-────────────────────────────────────────────────────────────────────────────────
-EXP 6 — BIOMEDCLIP BASE MODEL
-────────────────────────────────────────────────────────────────────────────────
-BiomedCLIP is pre-trained on biomedical image-text pairs (PMC). Use expanded
---lora-modules to cover HuggingFace transformer layers (query/key/value/fc1/fc2).
-
-# BiomedCLIP + standard loss
-python train_lora.py \
-    --base-model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp6_biomedclip_standard \
-    --match-mode standard --loss clip \
-    --batch-size 32 --grad-accum-steps 4 --epochs 10 \
-    --lora-modules "qkv,proj,fc1,fc2,query,key,value"
-
-# BiomedCLIP + negative-aware
-python train_lora.py \
-    --base-model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp6_biomedclip_negaware \
-    --match-mode negative_aware --loss clip \
-    --negative-weight 0.5 --negative-margin 0.0 \
-    --batch-size 32 --grad-accum-steps 4 --epochs 10 \
-    --lora-modules "qkv,proj,fc1,fc2,query,key,value"
-
-
-────────────────────────────────────────────────────────────────────────────────
-EXP 7 — CAPTION MODE ABLATION
-────────────────────────────────────────────────────────────────────────────────
-
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp7_caption_single \
-    --match-mode single_label --caption-mode single \
-    --batch-size 128 --epochs 10
-
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp7_caption_pair \
-    --match-mode two_label --caption-mode pair \
-    --batch-size 128 --epochs 10
-
-python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --train-csv $TRAIN_CSV --image-dir $IMAGE_DIR \
-    --output-dir ./experiments/exp7_caption_both \
-    --match-mode single_label --caption-mode both \
-    --batch-size 128 --epochs 10
-
-
-================================================================================
- QUICK DIAGNOSTICS CHECKLIST
-================================================================================
-
-After each run, check the per-epoch log line:
-  [batch stats] avg_positives_per_sample=X.XX  diagonal_only=Y.Y%  conflict_pairs=Z.Z%
-
-  avg_positives_per_sample
-    ≈ 1.0  → batch too small or mode too strict; increase --batch-size or switch
-             from two_label to single_label
-    > 2.0  → healthy; label-aware modes have real signal to exploit
-
-  diagonal_only
-    > 20%  → too many samples have no in-batch partner; same remedies as above
-
-  conflict_pairs
-    < 1%   → very few conflicting pairs; --negative-weight has little effect
-    5-15%  → healthy signal for repulsion term in negative_aware mode
-
-Training/val loss:
-  val_loss rises while train_loss falls → overfitting; reduce --lr or --lora-r,
-  or add dropout (--lora-dropout 0.1)
-  val_loss plateaus quickly → learning rate too high or LoRA rank too low
-
-
-================================================================================
- SCRIPTS TO RUN
-================================================================================
-
-All commands are copy-paste ready from the repo root with conda env active:
-  conda activate thesis_clip
-
-Shared args used everywhere:
-  --train-csv  cxr_data/mimic_cxr_train.csv
-  --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files
-  --paired-dir ./eval_outputs/baseline_output_official_test/paired_data
-  --csv        cxr_data/mimic_cxr_official_test.csv
-
-Eval output for all experiments goes to ./experiments/all_results.
-Add each trained model to run_all_evals.py MODELS list and run Step 2 once to
-compare everything side-by-side. Or use the per-model eval commands below.
-
+python train_lora.py --base-model ViT-L-14 --pretrained openai \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp1b_single_clip
 
 
 ────────────────────────────────────────────────────────────────────────────────
 IDEA 1a — Vanilla CLIP baseline (diagonal pairs, softmax loss)
-What: Standard CLIP fine-tuning with no multi-label awareness. Each image is
-      its own positive. Establishes the baseline retrieval performance.
+What: Standard CLIP fine-tuning with no multi-label awareness. Establishes
+      the baseline retrieval performance.
 ────────────────────────────────────────────────────────────────────────────────
 
-# TRAIN
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp1a_standard_clip \
-    --match-mode standard --loss clip \
-    --batch-size 128 --epochs 10
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --match-mode standard --loss clip --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp1a_standard_clip
 
-# EVAL
 python baseline_eval/eval_model.py \
     --model_type finetuned --name exp1a_standard_clip \
     --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
     --finetuned_checkpoint ./experiments/exp1a_standard_clip/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV
 
 
 ────────────────────────────────────────────────────────────────────────────────
 IDEA 1b — Single-label soft positives (CLIP loss)
-What: Two images in a batch are both positives if they share ≥1 CheXpert label.
-      Fixes the false-negative problem in standard CLIP for multi-label data.
+What: Two images are positives if they share >= 1 CheXpert label. Fixes the
+      false-negative problem in standard CLIP for multi-label data.
 ────────────────────────────────────────────────────────────────────────────────
 
-# TRAIN
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp1b_single_clip \
-    --match-mode single_label --loss clip \
-    --batch-size 128 --epochs 10
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --match-mode single_label --loss clip --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp1b_single_clip
 
-# EVAL
 python baseline_eval/eval_model.py \
     --model_type finetuned --name exp1b_single_clip \
     --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
     --finetuned_checkpoint ./experiments/exp1b_single_clip/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV
 
 
 ────────────────────────────────────────────────────────────────────────────────
 IDEA 1c — Two-label strict positives + pair captions (CLIP loss)
-What: Two images are positives only if they share ≥2 labels. Paired with
-      two-label captions ("fracture and edema") to align train and eval format.
+What: Two images are positives only if they share >= 2 labels. Pair with
+      two-label captions to align training and eval query format.
 ────────────────────────────────────────────────────────────────────────────────
 
-# TRAIN
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp1c_two_clip \
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode two_label --caption-mode pair --loss clip \
-    --batch-size 128 --epochs 10
+    --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp1c_two_clip
 
-# EVAL
 python baseline_eval/eval_model.py \
     --model_type finetuned --name exp1c_two_clip \
     --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
     --finetuned_checkpoint ./experiments/exp1c_two_clip/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV
 
 
 ────────────────────────────────────────────────────────────────────────────────
 IDEA 1d — Negative-aware CLIP (attract shared labels, repel conflicting)
-What: single_label positives + hinge repulsion for conflict pairs (one image
-      has Edema=1, other has Edema=0/NaN). Tests whether explicit repulsion
-      improves "yes A and no B" query retrieval.
+What: single_label positives + hinge repulsion for conflict pairs. Tests
+      whether explicit repulsion improves "yes A and no B" query retrieval.
 ────────────────────────────────────────────────────────────────────────────────
 
-# TRAIN
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp1d_negaware_clip \
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode negative_aware --loss clip \
     --negative-weight 0.5 --negative-margin 0.0 \
-    --batch-size 128 --epochs 10
+    --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp1d_negaware_clip
 
-# EVAL (all query types — negative mode shows clearest signal for this idea)
 python baseline_eval/eval_model.py \
     --model_type finetuned --name exp1d_negaware_clip \
     --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
     --finetuned_checkpoint ./experiments/exp1d_negaware_clip/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV
 
 
 ────────────────────────────────────────────────────────────────────────────────
 IDEA 1e — Single-label SigLIP loss
-What: Replace softmax loss with per-pair sigmoid binary cross-entropy.
-      Each (image, text) pair is an independent binary decision — decouples
-      loss magnitude from batch size.
+What: Per-pair sigmoid BCE instead of softmax. Each (image, text) pair is an
+      independent binary decision — decouples loss magnitude from batch size.
 ────────────────────────────────────────────────────────────────────────────────
 
-# TRAIN
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp1e_single_siglip \
-    --match-mode single_label --loss siglip \
-    --batch-size 128 --epochs 10
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --match-mode single_label --loss siglip --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp1e_single_siglip
 
-# EVAL
 python baseline_eval/eval_model.py \
     --model_type finetuned --name exp1e_single_siglip \
     --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
     --finetuned_checkpoint ./experiments/exp1e_single_siglip/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV
 
 
 ────────────────────────────────────────────────────────────────────────────────
 IDEA 1f — Negative-aware SigLIP (strongest repulsion signal)
-What: SigLIP loss + negative-aware matching. Conflicting pairs get target=-1
-      in the sigmoid loss (built-in repulsion) AND an extra hinge penalty.
-      Tests whether combining both repulsion mechanisms helps.
+What: SigLIP + negative-aware. Conflicting pairs get target=-1 in sigmoid
+      (built-in repulsion) AND an extra hinge penalty.
 ────────────────────────────────────────────────────────────────────────────────
 
-# TRAIN
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp1f_negaware_siglip \
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode negative_aware --loss siglip \
     --negative-weight 0.5 --negative-margin 0.0 \
-    --batch-size 128 --epochs 10
+    --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp1f_negaware_siglip
 
-# EVAL
 python baseline_eval/eval_model.py \
     --model_type finetuned --name exp1f_negaware_siglip \
     --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
     --finetuned_checkpoint ./experiments/exp1f_negaware_siglip/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
-
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV
 
 
 ────────────────────────────────────────────────────────────────────────────────
-IDEA 1g — Frozen CXR-CLIP image encoder + new OpenCLIP text encoder
-What: The CXR-CLIP models (r50_mc, swint_mc) were pre-trained on large
-      biomedical datasets with a specialized image encoder and a Bio_ClinicalBERT
-      text encoder. Here we keep their image encoder frozen (it already captures
-      rich CXR-specific visual representations) and pair it with a freshly
-      fine-tuned OpenCLIP text encoder (ViT-B-32, initialized from openai weights).
-      The text encoder learns to align with the frozen image space using our
-      label-format captions ("atelectasis", "atelectasis and edema", etc.) and
-      whatever match-mode / loss combination we choose.
-
-      Both sides project to 512-dim embeddings, matching by design: the CXR-CLIP
-      projection head outputs 512-dim, and ViT-B-32's text encoder also ends at
-      512-dim. No architecture changes required.
-
-      CXR-CLIP checkpoints available in valid_pretrained_models_to_try/:
-        r50_mc.pt    — ResNet50 image encoder, ImageNet normalization
-        swint_mc.pt  — Swin-T image encoder, 0.5 normalization
-
-      New flag: --cxrclip-checkpoint path/to/r50_mc.pt
-      Combined with normal --base-model ViT-B-32 --pretrained openai (text side).
-      LoRA is applied to the text encoder only (default --lora-target both still
-      works because the CXR-CLIP image encoder modules don't match the default
-      LoRA target names in_proj/out_proj/c_fc/c_proj).
+IDEA 1g — Frozen CXR-CLIP image encoder + fine-tuned OpenCLIP text encoder
+What: Keep a CXR-CLIP image encoder frozen (pre-trained on biomedical data)
+      and fine-tune a ViT-B-32 text encoder to align with it. Both project
+      to 512-dim — no architecture changes needed. LoRA applies to text only.
+      Checkpoints in valid_pretrained_models_to_try/:
+        r50_mc.pt   — ResNet50 image encoder
+        swint_mc.pt — Swin-T image encoder
 ────────────────────────────────────────────────────────────────────────────────
 
-# TRAIN — r50_mc image encoder + label-aware CLIP loss (recommended starting point)
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
+# r50_mc + single_label CLIP
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --cxrclip-checkpoint valid_pretrained_models_to_try/r50_mc.pt \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp8_r50_mc_single_clip \
-    --match-mode single_label --loss clip \
-    --batch-size 128 --epochs 10
+    --match-mode single_label --loss clip --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp8_r50_mc_single_clip
 
-# TRAIN — r50_mc + negative-aware CLIP loss
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
+# r50_mc + negative-aware CLIP
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --cxrclip-checkpoint valid_pretrained_models_to_try/r50_mc.pt \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp8_r50_mc_negaware_clip \
     --match-mode negative_aware --loss clip \
     --negative-weight 0.5 --negative-margin 0.0 \
-    --batch-size 128 --epochs 10
+    --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp8_r50_mc_negaware_clip
 
-# TRAIN — swint_mc image encoder + label-aware CLIP loss
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
+# swint_mc + single_label CLIP
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --cxrclip-checkpoint valid_pretrained_models_to_try/swint_mc.pt \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp8_swint_mc_single_clip \
-    --match-mode single_label --loss clip \
-    --batch-size 128 --epochs 10
+    --match-mode single_label --loss clip --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp8_swint_mc_single_clip
 
-# EVAL — r50_mc single_label
+# Eval (substitute name and matching checkpoints):
 python baseline_eval/eval_model.py \
     --model_type cxrclip_hybrid --name exp8_r50_mc_single_clip \
     --cxrclip_image_checkpoint valid_pretrained_models_to_try/r50_mc.pt \
     --hybrid_merged_checkpoint ./experiments/exp8_r50_mc_single_clip/final_merged.pt \
     --hybrid_text_model ViT-B-32 --hybrid_text_pretrained openai \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV
 
-# EVAL — r50_mc negative_aware
-python baseline_eval/eval_model.py \
-    --model_type cxrclip_hybrid --name exp8_r50_mc_negaware_clip \
-    --cxrclip_image_checkpoint valid_pretrained_models_to_try/r50_mc.pt \
-    --hybrid_merged_checkpoint ./experiments/exp8_r50_mc_negaware_clip/final_merged.pt \
-    --hybrid_text_model ViT-B-32 --hybrid_text_pretrained openai \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
-
-# EVAL — swint_mc single_label
-python baseline_eval/eval_model.py \
-    --model_type cxrclip_hybrid --name exp8_swint_mc_single_clip \
-    --cxrclip_image_checkpoint valid_pretrained_models_to_try/swint_mc.pt \
-    --hybrid_merged_checkpoint ./experiments/exp8_swint_mc_single_clip/final_merged.pt \
-    --hybrid_text_model ViT-B-32 --hybrid_text_pretrained openai \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
-
-# Add to run_all_evals.py MODELS list:
+# run_all_evals.py MODELS entry for hybrid models:
 #   {
 #       "name": "exp8_r50_mc_single_clip",
 #       "model_type": "cxrclip_hybrid",
@@ -843,359 +429,221 @@ python baseline_eval/eval_model.py \
 #   },
 
 
-
 ────────────────────────────────────────────────────────────────────────────────
 IDEA 2 — Batch size effect on label-aware mining
-What: Label-aware modes need enough in-batch positive partners to get a real
-      signal. If avg_positives_per_sample ≈ 1.0, the batch is too small.
-      Compare bs=32 vs bs=128 to measure the effect.
+What: Label-aware modes need in-batch positive partners. If
+      avg_positives_per_sample ~= 1.0 the batch is too small.
+      Note: --grad-accum-steps does NOT increase the label matrix size.
 ────────────────────────────────────────────────────────────────────────────────
 
-# TRAIN — small batch
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp2_bs32 \
-    --match-mode single_label --batch-size 32 --epochs 10
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --match-mode single_label --batch-size 32 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp2_bs32
 
-# TRAIN — large batch
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp2_bs128 \
-    --match-mode single_label --batch-size 128 --epochs 10
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --match-mode single_label --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp2_bs128
 
-# EVAL — bs32
+# Eval (substitute name and checkpoint for each):
 python baseline_eval/eval_model.py \
     --model_type finetuned --name exp2_bs32 \
     --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
     --finetuned_checkpoint ./experiments/exp2_bs32/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
-
-# EVAL — bs128
-python baseline_eval/eval_model.py \
-    --model_type finetuned --name exp2_bs128 \
-    --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
-    --finetuned_checkpoint ./experiments/exp2_bs128/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV
 
 
 ────────────────────────────────────────────────────────────────────────────────
-IDEA 3 — LoRA encoder target ablation (image only vs text only vs both)
-What: Does fine-tuning the image encoder, text encoder, or both matter most
-      for retrieval? Hypothesis: text encoder matters more because it shapes
-      the query embedding space.
+IDEA 3 — LoRA encoder target ablation (image / text / both)
+What: Does fine-tuning the image encoder, text encoder, or both matter most?
+      Hypothesis: text encoder dominates as it shapes the query space.
 ────────────────────────────────────────────────────────────────────────────────
 
-# TRAIN — image encoder only
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp3_image_only \
-    --match-mode single_label --lora-target image \
-    --batch-size 128 --epochs 10
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --match-mode single_label --lora-target image --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp3_image_only
 
-# TRAIN — text encoder only
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp3_text_only \
-    --match-mode single_label --lora-target text \
-    --batch-size 128 --epochs 10
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --match-mode single_label --lora-target text --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp3_text_only
 
-# TRAIN — both encoders
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp3_both \
-    --match-mode single_label --lora-target both \
-    --batch-size 128 --epochs 10
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --match-mode single_label --lora-target both --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp3_both
 
-# EVAL — image only
+# Eval (substitute name and checkpoint for each):
 python baseline_eval/eval_model.py \
     --model_type finetuned --name exp3_image_only \
     --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
     --finetuned_checkpoint ./experiments/exp3_image_only/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
-
-# EVAL — text only
-python baseline_eval/eval_model.py \
-    --model_type finetuned --name exp3_text_only \
-    --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
-    --finetuned_checkpoint ./experiments/exp3_text_only/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
-
-# EVAL — both
-python baseline_eval/eval_model.py \
-    --model_type finetuned --name exp3_both \
-    --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
-    --finetuned_checkpoint ./experiments/exp3_both/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV
 
 
 ────────────────────────────────────────────────────────────────────────────────
-IDEA 4 — LoRA rank ablation (r=4 vs r=16 vs r=64)
-What: Higher rank = more parameters = more capacity but more risk of overfitting.
-      Default r=16 adds ~1.9% trainable params. Rule: lora-alpha = 2 × lora-r.
+IDEA 4 — LoRA rank ablation (r=4 / r=16 / r=64)
+What: Higher rank = more capacity, more overfitting risk. Default r=16 adds
+      ~1.9% trainable params (~2.9M / 154M). Rule: lora-alpha = 2 x lora-r.
 ────────────────────────────────────────────────────────────────────────────────
 
-# TRAIN — r=4
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp4_r4 \
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode single_label --lora-r 4 --lora-alpha 8 \
-    --batch-size 128 --epochs 10
+    --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp4_r4
 
-# TRAIN — r=16 (default)
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp4_r16 \
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode single_label --lora-r 16 --lora-alpha 32 \
-    --batch-size 128 --epochs 10
+    --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp4_r16
 
-# TRAIN — r=64
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp4_r64 \
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode single_label --lora-r 64 --lora-alpha 128 \
-    --batch-size 128 --epochs 10
+    --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp4_r64
 
-# EVAL — r=4
+# Eval (substitute name and checkpoint for each):
 python baseline_eval/eval_model.py \
     --model_type finetuned --name exp4_r4 \
     --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
     --finetuned_checkpoint ./experiments/exp4_r4/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
-
-# EVAL — r=16
-python baseline_eval/eval_model.py \
-    --model_type finetuned --name exp4_r16 \
-    --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
-    --finetuned_checkpoint ./experiments/exp4_r16/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
-
-# EVAL — r=64
-python baseline_eval/eval_model.py \
-    --model_type finetuned --name exp4_r64 \
-    --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
-    --finetuned_checkpoint ./experiments/exp4_r64/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV
 
 
 ────────────────────────────────────────────────────────────────────────────────
-IDEA 5 — Repulsion strength ablation (λ and τ tuning)
-What: In negative_aware mode, λ controls how hard conflicting pairs are pushed
-      apart, τ controls how similar they need to be before repulsion kicks in.
-      Eval on negative queries shows the clearest signal.
+IDEA 5 — Repulsion strength ablation (lambda and tau tuning)
+What: lambda controls how hard conflict pairs are pushed apart; tau is the
+      cosine-sim threshold below which repulsion is skipped. Use
+      --query_mode negative for the clearest eval signal.
 ────────────────────────────────────────────────────────────────────────────────
 
-# TRAIN — conservative repulsion (λ=0.25)
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp5_w025 \
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode negative_aware --loss clip \
     --negative-weight 0.25 --negative-margin 0.0 \
-    --batch-size 128 --epochs 10
+    --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp5_w025
 
-# TRAIN — balanced (λ=0.5, default)
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp5_w05 \
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode negative_aware --loss clip \
     --negative-weight 0.5 --negative-margin 0.0 \
-    --batch-size 128 --epochs 10
+    --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp5_w05
 
-# TRAIN — aggressive repulsion (λ=1.0)
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp5_w10 \
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode negative_aware --loss clip \
     --negative-weight 1.0 --negative-margin 0.0 \
-    --batch-size 128 --epochs 10
+    --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp5_w10
 
-# TRAIN — lenient margin (only penalise if already fairly similar)
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp5_margin02 \
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode negative_aware --loss clip \
     --negative-weight 0.5 --negative-margin 0.2 \
-    --batch-size 128 --epochs 10
+    --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp5_margin02
 
-# EVAL — all four on negative queries only (most informative for this idea)
+# Eval on negative queries only (most informative for this ablation);
+# repeat substituting exp5_w05, exp5_w10, exp5_margin02:
 python baseline_eval/eval_model.py \
     --model_type finetuned --name exp5_w025 \
     --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
     --finetuned_checkpoint ./experiments/exp5_w025/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv --query_mode negative
-
-python baseline_eval/eval_model.py \
-    --model_type finetuned --name exp5_w05 \
-    --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
-    --finetuned_checkpoint ./experiments/exp5_w05/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv --query_mode negative
-
-python baseline_eval/eval_model.py \
-    --model_type finetuned --name exp5_w10 \
-    --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
-    --finetuned_checkpoint ./experiments/exp5_w10/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv --query_mode negative
-
-python baseline_eval/eval_model.py \
-    --model_type finetuned --name exp5_margin02 \
-    --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
-    --finetuned_checkpoint ./experiments/exp5_margin02/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv --query_mode negative
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV --query_mode negative
 
 
 ────────────────────────────────────────────────────────────────────────────────
 IDEA 6 — BiomedCLIP base model
-What: BiomedCLIP is pre-trained on biomedical image-text pairs (PMC articles).
-      It likely has a stronger prior for chest X-ray vocabulary than vanilla
-      CLIP. Test standard and negative-aware variants on this base.
-      Requires expanded --lora-modules to cover HuggingFace transformer layers.
+What: BiomedCLIP is pre-trained on biomedical image-text pairs (PMC). Likely
+      stronger prior for CXR vocabulary. Needs expanded --lora-modules to
+      cover HuggingFace transformer layers.
 ────────────────────────────────────────────────────────────────────────────────
 
-# TRAIN — BiomedCLIP + standard loss
-python train_lora.py \
-    --base-model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp6_biomedclip_standard \
+python train_lora.py --base-model $BIOMEDCLIP \
     --match-mode standard --loss clip \
     --batch-size 32 --grad-accum-steps 4 --epochs 10 \
-    --lora-modules "qkv,proj,fc1,fc2,query,key,value"
+    --lora-modules "qkv,proj,fc1,fc2,query,key,value" \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp6_biomedclip_standard
 
-# TRAIN — BiomedCLIP + negative-aware
-python train_lora.py \
-    --base-model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp6_biomedclip_negaware \
+python train_lora.py --base-model $BIOMEDCLIP \
     --match-mode negative_aware --loss clip \
     --negative-weight 0.5 --negative-margin 0.0 \
     --batch-size 32 --grad-accum-steps 4 --epochs 10 \
-    --lora-modules "qkv,proj,fc1,fc2,query,key,value"
+    --lora-modules "qkv,proj,fc1,fc2,query,key,value" \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp6_biomedclip_negaware
 
-# EVAL — BiomedCLIP standard
 python baseline_eval/eval_model.py \
     --model_type finetuned --name exp6_biomedclip_standard \
-    --finetuned_base_model "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224" \
-    --finetuned_pretrained "" \
+    --finetuned_base_model $BIOMEDCLIP --finetuned_pretrained "" \
     --finetuned_checkpoint ./experiments/exp6_biomedclip_standard/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV
 
-# EVAL — BiomedCLIP negative-aware
 python baseline_eval/eval_model.py \
     --model_type finetuned --name exp6_biomedclip_negaware \
-    --finetuned_base_model "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224" \
-    --finetuned_pretrained "" \
+    --finetuned_base_model $BIOMEDCLIP --finetuned_pretrained "" \
     --finetuned_checkpoint ./experiments/exp6_biomedclip_negaware/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV
 
 
 ────────────────────────────────────────────────────────────────────────────────
-IDEA 7 — Caption mode ablation (single vs pair vs both)
-What: Does training with only single-label captions ("atelectasis") hurt pair
-      query retrieval? Does training on only pair captions hurt single queries?
-      Default "both" (75% single, 25% pair) should generalise best.
+IDEA 7 — Caption mode ablation (single / pair / both)
+What: Does training with only single-label captions hurt pair query retrieval?
+      Default "both" (75%/25%) should generalise best across all query types.
 ────────────────────────────────────────────────────────────────────────────────
 
-# TRAIN — single captions only
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp7_caption_single \
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode single_label --caption-mode single \
-    --batch-size 128 --epochs 10
+    --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp7_caption_single
 
-# TRAIN — pair captions only (two_label match to align with captions)
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp7_caption_pair \
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode two_label --caption-mode pair \
-    --batch-size 128 --epochs 10
+    --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp7_caption_pair
 
-# TRAIN — both (default, expected best)
-python train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --train-csv  cxr_data/mimic_cxr_train.csv \
-    --image-dir  cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files \
-    --output-dir ./experiments/exp7_caption_both \
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode single_label --caption-mode both \
-    --batch-size 128 --epochs 10
+    --batch-size 128 --epochs 10 \
+    --wandb-project mimic-cxr-clip --wandb-run-name exp7_caption_both
 
-# EVAL — single captions
+# Eval (substitute name and checkpoint for each):
 python baseline_eval/eval_model.py \
     --model_type finetuned --name exp7_caption_single \
     --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
     --finetuned_checkpoint ./experiments/exp7_caption_single/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
-
-# EVAL — pair captions
-python baseline_eval/eval_model.py \
-    --model_type finetuned --name exp7_caption_pair \
-    --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
-    --finetuned_checkpoint ./experiments/exp7_caption_pair/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
-
-# EVAL — both captions
-python baseline_eval/eval_model.py \
-    --model_type finetuned --name exp7_caption_both \
-    --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
-    --finetuned_checkpoint ./experiments/exp7_caption_both/final_merged.pt \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv cxr_data/mimic_cxr_official_test.csv
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV
 
 
-────────────────────────────────────────────────────────────────────────────────
-COMPARE ALL RESULTS SIDE-BY-SIDE
-────────────────────────────────────────────────────────────────────────────────
+================================================================================
+ COMPARE ALL RESULTS SIDE-BY-SIDE
+================================================================================
 
-After training and eval-ing the models you want to compare, add them to the
-MODELS list in baseline_eval/run_all_evals.py, then run:
+Add each trained model to the MODELS list in baseline_eval/run_all_evals.py,
+then run:
 
 python baseline_eval/run_all_evals.py \
-    --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
-    --csv        cxr_data/mimic_cxr_official_test.csv \
+    --paired_dir $PAIRED_DIR --csv $TEST_CSV \
     --output_dir ./eval_outputs/all_results \
-    --batch_size 64 --skip_existing
+    --batch_size 64 --skip_existing \
+    --wandb-project mimic-cxr-clip --wandb-run-name all_results
 
-Produces summary CSVs + heatmaps + bar charts in ./experiments/all_results/.
+Produces summary CSVs + heatmaps + bar charts in ./eval_outputs/all_results/.
+
+
+================================================================================
+ QUICK DIAGNOSTICS CHECKLIST
+================================================================================
+
+After each training run, check the per-epoch log line:
+  [batch stats] avg_positives_per_sample=X.XX  diagonal_only=Y.Y%  conflict_pairs=Z.Z%
+
+  avg_positives_per_sample
+    ~= 1.0  -> batch too small / mode too strict -> increase --batch-size or
+               switch from two_label to single_label
+    > 2.0   -> healthy label-aware signal
+
+  diagonal_only > 20%  -> same remedies as above
+
+  conflict_pairs
+    < 1%    -> --negative-weight has little effect
+    5-15%   -> healthy for negative_aware mode
+
+Training/val loss:
+  val_loss rises, train_loss falls  -> overfitting; reduce --lr, --lora-r,
+                                        or add --lora-dropout 0.1
+  val_loss plateaus quickly         -> LR too high or rank too low

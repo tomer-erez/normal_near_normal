@@ -43,6 +43,11 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
+try:
+    import wandb
+except ImportError:
+    wandb = None
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
@@ -60,7 +65,7 @@ SHORT_LABELS = [l.replace("Enlarged Cardiomediastinum", "Enlarged CM") for l in 
 
 MODELS = [
     {"name": "vanilla_clip",  "model_type": "vanilla_clip",  "checkpoint": None},
-    {"name": "biomedclip",    "model_type": "biomedclip",    "checkpoint": None},
+    # {"name": "biomedclip",    "model_type": "biomedclip",    "checkpoint": None},
     # {"name": "cxrclip_r50_m",   "model_type": "cxrclip", "checkpoint": "r50_m.pt"},
     {"name": "cxrclip_r50_mc",  "model_type": "cxrclip", "checkpoint": "r50_mc.pt"},
     # {"name": "cxrclip_r50_mcc", "model_type": "cxrclip", "checkpoint": "r50_mcc.pt"},
@@ -100,22 +105,96 @@ MODELS = [
         "finetuned_pretrained": "",
         "finetuned_checkpoint": "experiments/_vanilla_bsz16x8_with_siglip/final_merged.pt",
     },
+    #         {
+    #     "name": "ft_swint_siglip_loss",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/fine_tuned_cxr_and_siglip/final_merged.pt",
+    # },
+    #             {
+    #     "name": "ft_swint_clip_loss",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/fine_tuned_cxr_and_cliploss/final_merged.pt",
+    # },
+
+        {
+        "name": "negawareclip_01",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/negawareclip_01/final_merged.pt",
+    },
+
+    #         {
+    #     "name": "negawareclip_05",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/negawareclip_05/final_merged.pt",
+    # },
+
+    #         {
+    #     "name": "negawaresiglip_01",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/negawaresiglip_01/final_merged.pt",
+    # },
+
+    #         {
+    #     "name": "negawaresiglip_05",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/negawaresiglip_05/final_merged.pt",
+    # },
+
             {
-        "name": "ft_swint_siglip_loss",
+        "name": "r32a32",
         "model_type": "finetuned",
         "checkpoint": None,
         "finetuned_base_model": "ViT-B-32",
         "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/fine_tuned_cxr_and_siglip/final_merged.pt",
+        "finetuned_checkpoint": "experiments/r32a32/final_merged.pt",
     },
+
                 {
-        "name": "ft_swint_clip_loss",
+        "name": "r32a64",
         "model_type": "finetuned",
         "checkpoint": None,
         "finetuned_base_model": "ViT-B-32",
         "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/fine_tuned_cxr_and_cliploss/final_merged.pt",
+        "finetuned_checkpoint": "experiments/r32a64/final_merged.pt",
     },
+
+                    {
+        "name": "r64a64",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/r64a64/final_merged.pt",
+    },
+
+                        {
+        "name": "r100a100",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/r100a100/final_merged.pt",
+    },
+
+
 ]
 
 KS = [1, 5, 10]
@@ -203,15 +282,10 @@ def build_macro_summary(all_results: dict[str, pd.DataFrame]) -> pd.DataFrame:
 
 # ── Plots ─────────────────────────────────────────────────────────────────────
 
-def _short(name: str) -> str:
-    return name.replace("cxrclip_", "").replace("vanilla_clip", "vanilla")
-
-
 def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
     plots_dir.mkdir(parents=True, exist_ok=True)
     model_names = list(all_results.keys())
-    short_names = [_short(m) for m in model_names]
-
+    short_names = model_names
     qtypes_present = {
         qt for df in all_results.values() for qt in df["type"].unique()
     }
@@ -451,6 +525,12 @@ def main():
                         help="Skip models whose results CSV already exists")
     parser.add_argument("--batch_size", type=int, default=64,
                         help="Batch size for image and text encoding (default: 64)")
+    parser.add_argument("--wandb-project", default=None,
+                        help="W&B project name. Omit to disable W&B logging.")
+    parser.add_argument("--wandb-run-name", default=None,
+                        help="W&B run name (auto-generated if omitted).")
+    parser.add_argument("--wandb-entity", default=None,
+                        help="W&B entity (team/user). Uses your default entity if omitted.")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -526,6 +606,34 @@ def main():
     # ── Generate plots ────────────────────────────────────────────────────────
     plots_dir = output_dir / "plots"
     make_plots(all_results, macro_summary, plots_dir)
+
+    # ── W&B logging ───────────────────────────────────────────────────────────
+    if args.wandb_project:
+        if wandb is None:
+            raise ImportError("wandb is not installed. Run: pip install wandb")
+        wandb.init(
+            project=args.wandb_project,
+            name=args.wandb_run_name,
+            entity=args.wandb_entity,
+            job_type="eval",
+            config=vars(args),
+            dir=str(output_dir),
+        )
+        # One summary table with all models × all metrics
+        wandb.log({"eval/macro_summary": wandb.Table(dataframe=macro_summary)})
+        # Flat scalars: eval/<model>/<qtype>_<metric>  (e.g. eval/lora_vitb32/single_P@10)
+        for _, row in macro_summary.iterrows():
+            metrics = {
+                f"eval/{row['model']}/{col}": row[col]
+                for col in macro_summary.columns
+                if col != "model" and not (isinstance(row[col], float) and np.isnan(row[col]))
+            }
+            wandb.log(metrics)
+        # Upload every plot image
+        for plot_path in sorted(plots_dir.glob("*.png")):
+            wandb.log({f"plots/{plot_path.stem}": wandb.Image(str(plot_path))})
+        wandb.finish()
+        log.info("W&B eval run finished.")
 
     # ── Print macro summary tables ────────────────────────────────────────────
     for qtype in ["single", "pair", "negative"]:
