@@ -69,11 +69,28 @@ class MIMICCXRImageTextDataset(Dataset):
         img_dir = self.image_root_path / rel_img_folder
 
         if not img_dir.exists():
-            return self.__getitem__(random.randint(0, len(self) - 1))
+            for _ in range(20):
+                idx = random.randint(0, len(self) - 1)
+                row = self.df.iloc[idx]
+                rel_img_folder = self.change_text_path_to_img_path(row["txt_file_path"])
+                img_dir = self.image_root_path / rel_img_folder
+                if img_dir.exists() and list(img_dir.glob("*.jpg")):
+                    break
+            else:
+                raise RuntimeError("Could not find a valid image directory after 20 retries")
 
         jpgs = list(img_dir.glob("*.jpg"))
         if len(jpgs) == 0:
-            return self.__getitem__(random.randint(0, len(self) - 1))
+            for _ in range(20):
+                idx = random.randint(0, len(self) - 1)
+                row = self.df.iloc[idx]
+                rel_img_folder = self.change_text_path_to_img_path(row["txt_file_path"])
+                img_dir = self.image_root_path / rel_img_folder
+                jpgs = list(img_dir.glob("*.jpg"))
+                if jpgs:
+                    break
+            else:
+                raise RuntimeError("Could not find any JPGs after 20 retries")
 
         img_path = random.choice(jpgs)
 

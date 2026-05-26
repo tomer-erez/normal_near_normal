@@ -65,6 +65,8 @@ KNOBS
                               (e.g. -0.2) to be more lenient.
 """
 
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -140,9 +142,8 @@ class LabelAwareClipLoss(nn.Module):
         The diagonal is always set to True: each sample is always a positive
         with itself (standard CLIP identity pairing is preserved).
 
-        STEP 4 — Detect conflict pairs  (used by all modes to zero out bad positives,
-                                         and used explicitly in negative_aware repulsion)
-        ---------------------------------------------------------------------------------
+        STEP 4 — Detect conflict pairs  (used by negative_aware repulsion only)
+        -------------------------------------------------------------------------
         A pair (i, j) CONFLICTS if there exists any label l such that:
           sample i says "label l is present" (pos[i,l]=1) AND
           sample j says "label l is absent"  (neg[j,l]=1)
@@ -155,14 +156,19 @@ class LabelAwareClipLoss(nn.Module):
 
         The diagonal is cleared (a sample never conflicts with itself).
 
-        Conflict pairs are zeroed out of the positive target even in
-        single_label / two_label modes: we don't want to attract a pair if
-        they share one label but disagree on another.
+        NaN labels are encoded as -1.0 (absent), so the conflict rate is
+        typically ~78 % of off-diagonal pairs.  Conflict pairs are NOT
+        zeroed out of the positive target — if two samples share positive
+        labels they attract each other regardless of any conflicts on other
+        labels.  The hinge term in negative_aware forward() provides the
+        counter-signal; keep its weight λ small (≤ 0.1) so attraction
+        dominates.
 
         STEP 5 — Build the soft target and normalise
         ---------------------------------------------
-        target[i,j] = 1  if (i,j) is positive AND not conflicting
-                     = 0  otherwise
+        target[i,j] = positive[i,j] / row_sum_i
+          (conflicting pairs are NOT excluded — shared positive labels attract
+           even when the pair also conflicts on a different label)
 
         Each row is divided by its sum (clamped to ≥1 so we never divide by
         zero for samples that have no in-batch positive partner).  After
@@ -396,11 +402,15 @@ class LabelAwareSigLipLoss(nn.Module):
         (pos/neg indicators → shared_pos count → threshold → conflict detection),
         but instead of a soft normalised target it produces a hard ±1 matrix:
 
-          +1  →  positive pair (shares ≥k positive labels AND no conflict)
-          −1  →  negative pair (insufficient label overlap OR conflicting)
+          +1  →  positive pair (shares ≥k positive labels, regardless of conflicts)
+          −1  →  negative pair (insufficient label overlap)
 
-        Conflicting pairs receive −1 even if they share positive labels, consistent
-        with the CLIP variant that zeros out such pairs from the soft target.
+        Conflicting pairs that also share positive labels receive +1 (attracted).
+        This matches the CLIP variant: both losses rely on the hinge repulsion
+        term in negative_aware forward() for the push signal rather than
+        forcing conflicting pairs to 0/−1 in the target.  Because NaN is
+        encoded as -1.0 (absent) the conflict rate is high (~78 %); keep
+        λ small (≤ 0.1) so attraction dominates.
 
         Args:
             labels: (B, L) float tensor with 1.0 / -1.0 / 0.0 encoding.

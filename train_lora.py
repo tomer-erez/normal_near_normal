@@ -551,12 +551,16 @@ def main():
 
     val_loader = None
     if val_dataset is not None:
-        # Val runs on all ranks; losses are averaged independently (they're identical since
-        # val data isn't sharded, which is fine for monitoring purposes)
+        val_sampler = (
+            DistributedSampler(val_dataset, num_replicas=world_size, rank=rank,
+                               shuffle=False, drop_last=False)
+            if world_size > 1 else None
+        )
         val_loader = DataLoader(
             val_dataset,
             batch_size=args.batch_size * 2,
             shuffle=False,
+            sampler=val_sampler,
             num_workers=args.workers,
             pin_memory=True,
             drop_last=False,
@@ -668,6 +672,10 @@ def main():
         val_loss = None
         if val_loader is not None:
             val_loss = eval_one_epoch(model, val_loader, loss_fn, device, amp_dtype, is_siglip=is_siglip)
+            if world_size > 1:
+                t = torch.tensor(val_loss, device=device)
+                dist.all_reduce(t)
+                val_loss = (t / world_size).item()
 
         # Scheduler step
         if args.scheduler == "cosine":

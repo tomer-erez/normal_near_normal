@@ -40,7 +40,6 @@ Produces `experiments/my_experiment/final_merged.pt`.
 python baseline_eval/run_all_evals.py \
     --paired_dir $PAIRED_DIR --csv $TEST_CSV \
     --output_dir ./eval_outputs/all_results --batch_size 64 \
-    --wandb-project mimic-cxr-clip --wandb-run-name all_results
 ```
 
 Add `--skip_existing` to skip models already evaluated. Produces per-model result CSVs, `summary_macro.csv`, and plots in `--output_dir`.

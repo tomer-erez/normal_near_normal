@@ -4,6 +4,8 @@ captions are built from positive CheXpert labels, matching the text queries
 used in baseline_eval/eval_model.py.
 """
 
+from __future__ import annotations
+
 import random
 from pathlib import Path
 
@@ -142,8 +144,7 @@ class CXRLabelDataset(Dataset):
         if self.caption_mode == "single":
             caption = random.choice(pos_labels).lower()
         elif self.caption_mode == "pair":
-            chosen = random.sample(pos_labels, 2) if len(pos_labels) >= 2 else pos_labels[:1]
-            caption = _build_caption(chosen)
+            caption = _build_caption(random.sample(pos_labels, 2))
         elif self.caption_mode == "negative":
             pos = random.choice(pos_labels)
             if neg_labels:
@@ -156,17 +157,22 @@ class CXRLabelDataset(Dataset):
                 caption = _build_caption(random.sample(pos_labels, 2))
             else:
                 caption = random.choice(pos_labels).lower()
-        else:  # all: 50% single, 25% pair, 25% negative
+        else:  # all: 50% single / 25% pair / 25% negative; unavailable types fall back to single
             r = random.random()
+            can_pair = len(pos_labels) >= 2
             if r < 0.50:
                 caption = random.choice(pos_labels).lower()
-            elif r < 0.75 and len(pos_labels) >= 2:
-                caption = _build_caption(random.sample(pos_labels, 2))
-            elif neg_labels:
-                neg = random.choice(neg_labels)
-                caption = f"{random.choice(pos_labels).lower()} and no {neg.lower()}"
+            elif r < 0.75:
+                if can_pair:
+                    caption = _build_caption(random.sample(pos_labels, 2))
+                else:
+                    caption = random.choice(pos_labels).lower()  # pair impossible → single
             else:
-                caption = random.choice(pos_labels).lower()
+                if neg_labels:
+                    neg = random.choice(neg_labels)
+                    caption = f"{random.choice(pos_labels).lower()} and no {neg.lower()}"
+                else:
+                    caption = random.choice(pos_labels).lower()  # no negatives → single
 
         tokens = self.tokenizer([caption])[0]  # (context_len,)
         label_tensor = torch.from_numpy(label_vec)  # (13,) float32

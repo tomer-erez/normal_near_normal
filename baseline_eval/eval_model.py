@@ -315,13 +315,19 @@ def build_queries(query_mode: str = "all") -> list[dict]:
 
 def retrieve_topk(query_emb: np.ndarray, gallery_emb: np.ndarray, k: int) -> np.ndarray:
     sim = query_emb @ gallery_emb.T
+    n_gallery = sim.shape[1]
+    if k >= n_gallery:
+        # Gallery smaller than k — return all indices sorted by similarity
+        return np.argsort(-sim, axis=1)
     part = np.argpartition(-sim, k, axis=1)[:, :k]
     rows = np.arange(part.shape[0])[:, None]
     order = np.argsort(-sim[rows, part], axis=1)
     return part[rows, order]
 
 
-def precision_at_k(relevant: np.ndarray, k: int) -> float:
+def precision_at_k(relevant: np.ndarray, k: int, n_relevant: int) -> float:
+    if n_relevant == 0:
+        return float("nan")
     return float(relevant[:k].mean())
 
 
@@ -500,7 +506,7 @@ def main():
             "neg_labels": ",".join(qdef["neg_label_cols"]),
         }
         for k in ks:
-            row[f"P@{k}"] = precision_at_k(retrieved_relevant, k)
+            row[f"P@{k}"] = precision_at_k(retrieved_relevant, k, n_relevant)
             row[f"R@{k}"] = recall_at_k(retrieved_relevant, k, n_relevant)
         rows.append(row)
 

@@ -202,6 +202,24 @@ MODELS = [
         "finetuned_pretrained": "",
         "finetuned_checkpoint": "experiments/vit_l_14/final_merged.pt",
     },
+
+                            {
+        "name": "vitb32_cliploss_negaware_bs32_no_conflict_zeriong_version",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/vitb32_cliploss_negaware_bs32_no_conflict_zeriong_version/final_merged.pt",
+    },
+
+                            {
+        "name": "vitb32_sigliploss_negaware_bs32_no_conflict_zeriong_version",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/vitb32_sigliploss_negaware_bs32_no_conflict_zeriong_version/final_merged.pt",
+    },
 ]
 
 KS = [1, 5, 10]
@@ -265,9 +283,11 @@ def build_summary(all_results: dict[str, pd.DataFrame], qtype: str) -> pd.DataFr
     for model_name, df in all_results.items():
         if qtype not in df["type"].values:
             continue
-        model_subset = df[df["type"] == qtype][["query"] + METRIC_COLS].reset_index(drop=True)
-        for col in METRIC_COLS:
-            subset[f"{model_name}_{col}"] = model_subset[col].values
+        model_subset = (
+            df[df["type"] == qtype][["query"] + METRIC_COLS]
+            .rename(columns={c: f"{model_name}_{c}" for c in METRIC_COLS})
+        )
+        subset = subset.merge(model_subset, on="query", how="left")
 
     return subset
 
@@ -340,18 +360,21 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
                 col = f"{qtype}_{metric}"
                 vals = [
                     macro_summary.loc[macro_summary["model"] == m, col].values[0]
-                    if col in macro_summary.columns else 0.0
+                    if col in macro_summary.columns else float("nan")
                     for m in model_names
                 ]
                 per_metric.append((metric, vals))
                 all_metric_vals.extend(vals)
-            hi = max(all_metric_vals) if all_metric_vals else 1.0
+            finite_vals = [v for v in all_metric_vals if not np.isnan(v)]
+            hi = max(finite_vals) if finite_vals else 1.0
             ylim_top = min(1.0, hi * 1.4)  # 40% headroom for bar labels
             ax.set_ylim(0, ylim_top)
             label_pad = ylim_top * 0.02  # 2% of axis height
             for i, (metric, vals) in enumerate(per_metric):
                 bars = ax.bar(x + i * width, vals, width, label=metric)
                 for bar, val in zip(bars, vals):
+                    if np.isnan(val):
+                        continue
                     text_y = min(bar.get_height() + label_pad, ylim_top * 0.97)
                     ax.text(bar.get_x() + bar.get_width() / 2, text_y,
                             f"{val:.3f}", ha="center", va="bottom", fontsize=7)
