@@ -64,13 +64,13 @@ LABEL_TO_IDX = {col: i for i, col in enumerate(LABEL_COLS)}
 SHORT_LABELS = [l.replace("Enlarged Cardiomediastinum", "Enlarged CM") for l in CHEXPERT_LABELS]
 
 MODELS = [
-    {"name": "vanilla_clip",  "model_type": "vanilla_clip",  "checkpoint": None},
+    {"name": "vanilla_clip_not_trained",  "model_type": "vanilla_clip",  "checkpoint": None},
     # {"name": "biomedclip",    "model_type": "biomedclip",    "checkpoint": None},
     # {"name": "cxrclip_r50_m",   "model_type": "cxrclip", "checkpoint": "r50_m.pt"},
     {"name": "cxrclip_r50_mc",  "model_type": "cxrclip", "checkpoint": "r50_mc.pt"},
     # {"name": "cxrclip_r50_mcc", "model_type": "cxrclip", "checkpoint": "r50_mcc.pt"},
     # {"name": "cxrclip_swint_m",   "model_type": "cxrclip", "checkpoint": "swint_m.pt"},
-    {"name": "cxrclip_swint_mc",  "model_type": "cxrclip", "checkpoint": "swint_mc.pt"},
+    # {"name": "cxrclip_swint_mc",  "model_type": "cxrclip", "checkpoint": "swint_mc.pt"},
     # {"name": "cxrclip_swint_mcc", "model_type": "cxrclip", "checkpoint": "swint_mcc.pt"},
     # Fine-tuned models — add entries here after training:
     # {
@@ -158,23 +158,23 @@ MODELS = [
     #     "finetuned_checkpoint": "experiments/negawaresiglip_05/final_merged.pt",
     # },
 
-            {
-        "name": "r32a32",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/r32a32/final_merged.pt",
-    },
+    #         {
+    #     "name": "r32a32",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/r32a32/final_merged.pt",
+    # },
 
-                {
-        "name": "r32a64",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/r32a64/final_merged.pt",
-    },
+    #             {
+    #     "name": "r32a64",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/r32a64/final_merged.pt",
+    # },
 
                     {
         "name": "r64a64",
@@ -185,16 +185,23 @@ MODELS = [
         "finetuned_checkpoint": "experiments/r64a64/final_merged.pt",
     },
 
+    #                     {
+    #     "name": "r100a100",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/r100a100/final_merged.pt",
+    # },
+
                         {
-        "name": "r100a100",
+        "name": "vit_l_14",
         "model_type": "finetuned",
         "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
+        "finetuned_base_model": "ViT-L-14",
         "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/r100a100/final_merged.pt",
+        "finetuned_checkpoint": "experiments/vit_l_14/final_merged.pt",
     },
-
-
 ]
 
 KS = [1, 5, 10]
