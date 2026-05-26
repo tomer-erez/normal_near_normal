@@ -190,8 +190,11 @@ class LabelAwareClipLoss(nn.Module):
         conflict = ((pos @ neg.T) + (neg @ pos.T)) > 0      # (B, B) bool
         conflict.fill_diagonal_(False)
 
-        # Step 5: zero out conflicting positives, then normalise rows to sum=1
-        target = positive.float() * (~conflict).float()
+        # Step 5: build target and normalise rows to sum=1.
+        # Attraction is based purely on shared positive labels in all modes.
+        # In negative_aware, conflicting pairs are repelled via the hinge term
+        # in the forward pass — no need to zero them out here too.
+        target = positive.float()
         row_sums = target.sum(dim=1, keepdim=True).clamp(min=1.0)
         return target / row_sums, conflict
 
@@ -415,9 +418,11 @@ class LabelAwareSigLipLoss(nn.Module):
         conflict = ((pos @ neg.T) + (neg @ pos.T)) > 0
         conflict.fill_diagonal_(False)
 
-        # +1 for confirmed positives (no conflict), −1 for everything else
+        # +1 for shared-label pairs, −1 for everything else.
+        # Attraction is based purely on shared positive labels in all modes.
+        # Conflicting pairs are repelled via the hinge term in the forward pass.
         target = torch.where(
-            positive & ~conflict,
+            positive,
             torch.ones_like(positive, dtype=torch.float),
             -torch.ones_like(positive, dtype=torch.float),
         )

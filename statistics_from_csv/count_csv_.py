@@ -2,7 +2,7 @@ import pandas as pd
 
 print("Loading CSV...")
 df = pd.read_csv(
-    r"C:\Users\tomer.erez\Desktop\code_projects\normal_near_normal\cxr_data\all_txt_data_and_labels.csv"
+    r"/home/tomererez/normal_near_normal/cxr_data/all_txt_data_and_labels.csv"
 )
 
 chexpert_cols = [col for col in df.columns if col.startswith("chexpert_")]
@@ -68,3 +68,23 @@ pos_label_counts = num_pos_labels.value_counts().sort_index()
 for k, count in pos_label_counts.items():
     print(f"{k} positive labels: {count:,} samples ({count/len(df):.3%})")
     
+# now for negative labels
+print("\nDistribution of number of negative labels per sample:")
+num_neg_labels = (df[chexpert_cols] == 0).sum(axis=1)
+neg_label_counts = num_neg_labels.value_counts().sort_index()
+for k, count in neg_label_counts.items():
+    print(f"{k} negative labels: {count:,} samples ({count/len(df):.3%})")
+
+# now for uncertain labels
+print("\nDistribution of number of uncertain labels per sample:")
+num_uncertain_labels = (df[chexpert_cols] == -1).sum(axis=1)
+uncertain_label_counts = num_uncertain_labels.value_counts().sort_index()
+for k, count in uncertain_label_counts.items():
+    print(f"{k} uncertain labels: {count:,} samples ({count/len(df):.3%})")
+
+#now for NaN labels
+print("\nDistribution of number of NaN labels per sample:")
+num_nan_labels = df[chexpert_cols].isna().sum(axis=1)
+nan_label_counts = num_nan_labels.value_counts().sort_index()
+for k, count in nan_label_counts.items():
+    print(f"{k} NaN labels: {count:,} samples ({count/len(df):.3%})")

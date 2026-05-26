@@ -168,7 +168,7 @@ def parse_args():
                         "'two_label': share ≥2 positive labels. "
                         "'negative_aware': single_label + repulsion for conflicting pairs. "
                         "See training_guide.txt for details.")
-    p.add_argument("--negative-weight", type=float, default=0.5,
+    p.add_argument("--negative-weight", type=float, default=0.25,
                    help="Weight for the repulsion loss term (negative_aware mode only).")
     p.add_argument("--negative-margin", type=float, default=0.0,
                    help="Cosine-sim margin for repulsion: pairs with sim < margin are not penalised "
