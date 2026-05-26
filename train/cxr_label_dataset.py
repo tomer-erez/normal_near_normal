@@ -47,7 +47,10 @@ def _build_caption(labels: list[str]) -> str:
 class CXRLabelDataset(Dataset):
     """
     Args:
-        caption_mode: "single" (1 label), "pair" (2 labels), or "both" (random).
+        caption_mode: "single" (1 pos label), "pair" (2 pos labels),
+                      "negative" (1 pos + 1 neg → "atelectasis and no cardiomegaly"),
+                      "both" (75% single / 25% pair),
+                      "all"  (50% single / 25% pair / 25% negative).
         max_samples: cap for debugging.
         seed: used only for shuffling when max_samples is set.
     """
@@ -62,7 +65,7 @@ class CXRLabelDataset(Dataset):
         max_samples: int | None = None,
         seed: int = 42,
     ):
-        assert caption_mode in ("single", "pair", "both")
+        assert caption_mode in ("single", "pair", "both", "negative", "all")
         self.transform = transform
         self.tokenizer = tokenizer
         self.caption_mode = caption_mode
@@ -112,7 +115,10 @@ class CXRLabelDataset(Dataset):
             img_path = self.image_dir / p[0] / p[1] / p[2].replace(".txt", "") / f"{dicom_ids[i]}.jpg"
             pos_indices = np.where(raw[i] == 1)[0]
             pos_labels = [CHEXPERT_LABELS[j] for j in pos_indices]
-            records.append((img_path, pos_labels, label_encoded[i].copy()))
+            # negative labels: explicitly ruled out (CSV 0) or not mentioned (NaN) — matches eval semantics
+            neg_indices = np.where(label_encoded[i] == -1.0)[0]
+            neg_labels = [CHEXPERT_LABELS[j] for j in neg_indices]
+            records.append((img_path, pos_labels, neg_labels, label_encoded[i].copy()))
 
         self.records = records
 
@@ -121,7 +127,7 @@ class CXRLabelDataset(Dataset):
 
     def __getitem__(self, idx):
         for _ in range(20):
-            img_path, pos_labels, label_vec = self.records[idx]
+            img_path, pos_labels, neg_labels, label_vec = self.records[idx]
             try:
                 img = Image.open(img_path).convert("RGB")
                 break
@@ -132,18 +138,36 @@ class CXRLabelDataset(Dataset):
 
         img = self.transform(img)
 
-        # Build caption from positive labels
+        # Build caption
         if self.caption_mode == "single":
-            chosen = [random.choice(pos_labels)]
+            caption = random.choice(pos_labels).lower()
         elif self.caption_mode == "pair":
             chosen = random.sample(pos_labels, 2) if len(pos_labels) >= 2 else pos_labels[:1]
-        else:  # both
-            if len(pos_labels) >= 2 and random.random() < 0.25:  # 25% pairs, 75% single
-                chosen = random.sample(pos_labels, 2)
+            caption = _build_caption(chosen)
+        elif self.caption_mode == "negative":
+            pos = random.choice(pos_labels)
+            if neg_labels:
+                neg = random.choice(neg_labels)
+                caption = f"{pos.lower()} and no {neg.lower()}"
             else:
-                chosen = [random.choice(pos_labels)]
+                caption = pos.lower()  # fallback: all labels positive, no negatives available
+        elif self.caption_mode == "both":
+            if len(pos_labels) >= 2 and random.random() < 0.25:
+                caption = _build_caption(random.sample(pos_labels, 2))
+            else:
+                caption = random.choice(pos_labels).lower()
+        else:  # all: 50% single, 25% pair, 25% negative
+            r = random.random()
+            if r < 0.50:
+                caption = random.choice(pos_labels).lower()
+            elif r < 0.75 and len(pos_labels) >= 2:
+                caption = _build_caption(random.sample(pos_labels, 2))
+            elif neg_labels:
+                neg = random.choice(neg_labels)
+                caption = f"{random.choice(pos_labels).lower()} and no {neg.lower()}"
+            else:
+                caption = random.choice(pos_labels).lower()
 
-        caption = _build_caption(chosen)
         tokens = self.tokenizer([caption])[0]  # (context_len,)
         label_tensor = torch.from_numpy(label_vec)  # (13,) float32
 

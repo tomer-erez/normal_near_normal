@@ -124,7 +124,7 @@ def parse_args():
     p.add_argument("--val-split", type=float, default=0.1,
                    help="Fraction of training data held out for validation when --val-csv is not given. "
                         "Set to 0 to disable validation entirely.")
-    p.add_argument("--caption-mode", default="both", choices=["single", "pair", "both"])
+    p.add_argument("--caption-mode", default="both", choices=["single", "pair", "both", "negative", "all"])
     p.add_argument("--max-samples", type=int, default=None,
                    help="Cap dataset size (useful for debugging)")
     # LoRA
@@ -148,7 +148,7 @@ def parse_args():
                    help="Gradient accumulation steps")
     p.add_argument("--save-frequency", type=int, default=1,
                    help="Save adapter checkpoint every N epochs")
-    p.add_argument("--precision", default="fp16", choices=["fp32", "fp16", "bf16"])
+    p.add_argument("--precision", default="bf16", choices=["fp32", "fp16", "bf16"])
     p.add_argument("--resume", default=None, help="Path to adapter .pt to resume from")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--report-interval-steps", type=int, default=500,
