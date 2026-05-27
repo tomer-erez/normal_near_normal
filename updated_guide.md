@@ -62,17 +62,18 @@ Edit the `MODELS` list in `baseline_eval/run_all_evals.py`:
 
 ## Label Encoding
 
-| CSV value | Meaning | Tensor value |
-|-----------|---------|--------------|
-| `1` | Pathology positively mentioned | `1.0` (positive) |
-| `0` | Pathology explicitly ruled out | `-1.0` (negative) |
-| `NaN` | Label not mentioned in report | `-1.0` (same as 0) |
-| `-1` | Ambiguous / uncertain mention | `0.0` (ignored) |
+| CSV value | Meaning | `--nan-mode negative` (default) | `--nan-mode ignore` |
+|-----------|---------|--------------------------------|---------------------|
+| `1` | Pathology positively mentioned | `1.0` (positive) | `1.0` (positive) |
+| `0` | Pathology explicitly ruled out | `-1.0` (negative) | `-1.0` (negative) |
+| `NaN` | Label not mentioned in report | `-1.0` (negative, same as 0) | `0.0` (ignored) |
+| `-1` | Ambiguous / uncertain mention | `0.0` (ignored) | `0.0` (ignored) |
 
-NaN and 0 are both treated as `-1.0`: absence of evidence = evidence of absence.
-Only `-1` (uncertain language like "possible" or "cannot exclude") is ignored.
+**`--nan-mode negative`** (default): absence of evidence = evidence of absence. NaN and CSV 0 are treated identically as negative.
 
-> **Note:** if sample A has Edema=1 and B has Edema=NaN, they are flagged as a conflict in `negative_aware` mode.
+**`--nan-mode ignore`**: only labels *explicitly ruled out* (CSV 0) count as negative. NaN ("not mentioned") is ignored — useful when you want a stricter definition of a conflict.
+
+> **Note:** in `negative_aware` mode, if sample A has Edema=1 and B has Edema=NaN, they are flagged as a conflict under `--nan-mode negative` but **not** under `--nan-mode ignore`.
 
 ---
 
@@ -146,7 +147,22 @@ With SigLIP, prefer `--negative-weight 0.25` since the main loss already repels 
 
 ---
 
-## Knob 4 — Query Mode (`--query_mode`, eval only)
+## Knob 4 — NaN Mode (`--nan-mode`)
+
+Controls how labels that are *not mentioned* (NaN in the CSV) are encoded during training and how they affect relevance during evaluation of negative queries.
+
+| Mode | NaN encoding (train) | NaN in negative query relevance (eval) |
+|------|---------------------|----------------------------------------|
+| `negative` (default) | `-1.0` — treated as absent | image is relevant if neg_label == 0 **or** NaN |
+| `ignore` | `0.0` — treated as unknown | image is **not** considered relevant for that query |
+
+Use `--nan-mode ignore` when:
+- You want only *explicitly ruled-out* labels to define negatives (stricter standard).
+- You are training `negative_aware` and want to suppress spurious conflicts from NaN-labelled images.
+
+---
+
+## Knob 5 — Query Mode (`--query_mode`, eval only)
 
 | Mode | # Queries | Format | Relevant images |
 |------|-----------|--------|----------------|

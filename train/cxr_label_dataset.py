@@ -53,6 +53,10 @@ class CXRLabelDataset(Dataset):
                       "negative" (1 pos + 1 neg → "atelectasis and no cardiomegaly"),
                       "both" (75% single / 25% pair),
                       "all"  (50% single / 25% pair / 25% negative).
+        nan_mode: "negative" (default) — NaN (not mentioned) is treated the same
+                  as CSV 0 (explicitly ruled out), both encoded as -1.0 (negative).
+                  "ignore" — NaN is encoded as 0.0 (ignored), so only CSV 0 counts
+                  as a negative label.
         max_samples: cap for debugging.
         seed: used only for shuffling when max_samples is set.
     """
@@ -64,13 +68,16 @@ class CXRLabelDataset(Dataset):
         transform,
         tokenizer,
         caption_mode: str = "both",
+        nan_mode: str = "negative",
         max_samples: int | None = None,
         seed: int = 42,
     ):
         assert caption_mode in ("single", "pair", "both", "negative", "all")
+        assert nan_mode in ("negative", "ignore")
         self.transform = transform
         self.tokenizer = tokenizer
         self.caption_mode = caption_mode
+        self.nan_mode = nan_mode
         self.image_dir = Path(image_dir)
 
         df = pd.read_csv(
@@ -106,9 +113,15 @@ class CXRLabelDataset(Dataset):
             parts_series = parts_series.iloc[idx].reset_index(drop=True)
 
         # Encode labels: 1.0=positive, -1.0=negative, 0.0=ignore
-        # NaN (not mentioned) and CSV 0 (explicitly ruled out) both → -1.0 (negative).
-        # Only CSV -1 (uncertain/ambiguous) → 0.0 (ignore).
-        label_encoded = np.where(raw == 1, 1.0, np.where(raw == -1, 0.0, -1.0)).astype(np.float32)
+        # CSV -1 (uncertain/ambiguous) is always 0.0 (ignore).
+        # NaN (not mentioned): in "negative" mode → -1.0; in "ignore" mode → 0.0.
+        # CSV 0 (explicitly ruled out) → -1.0 in both modes.
+        if nan_mode == "negative":
+            # NaN and CSV 0 both treated as negative (-1.0)
+            label_encoded = np.where(raw == 1, 1.0, np.where(raw == -1, 0.0, -1.0)).astype(np.float32)
+        else:  # ignore
+            # Only CSV 0 is negative (-1.0); NaN is ignored (0.0)
+            label_encoded = np.where(raw == 1, 1.0, np.where(raw == 0, -1.0, 0.0)).astype(np.float32)
 
         dicom_ids = df["metadata_dicom_id"].values
         records = []
@@ -117,8 +130,13 @@ class CXRLabelDataset(Dataset):
             img_path = self.image_dir / p[0] / p[1] / p[2].replace(".txt", "") / f"{dicom_ids[i]}.jpg"
             pos_indices = np.where(raw[i] == 1)[0]
             pos_labels = [CHEXPERT_LABELS[j] for j in pos_indices]
-            # negative labels: explicitly ruled out (CSV 0) or not mentioned (NaN) — matches eval semantics
-            neg_indices = np.where(label_encoded[i] == -1.0)[0]
+            # negative labels for caption building: depends on nan_mode
+            if nan_mode == "negative":
+                # explicitly ruled out (CSV 0) or not mentioned (NaN) both count
+                neg_indices = np.where(label_encoded[i] == -1.0)[0]
+            else:
+                # only explicitly ruled out (CSV 0) counts
+                neg_indices = np.where(raw[i] == 0)[0]
             neg_labels = [CHEXPERT_LABELS[j] for j in neg_indices]
             records.append((img_path, pos_labels, neg_labels, label_encoded[i].copy()))
 

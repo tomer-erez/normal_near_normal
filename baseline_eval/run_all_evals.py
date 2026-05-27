@@ -30,6 +30,8 @@ Usage
     python baseline_eval/run_all_evals.py ... --skip_existing
 """
 
+from __future__ import annotations
+
 import argparse
 import logging
 import shutil
@@ -238,7 +240,8 @@ def results_path(model: dict) -> Path:
 
 
 def run_eval(model: dict, paired_dir: str, csv: str,
-             query_mode: str = "all", batch_size: int = 64) -> Path:
+             query_mode: str = "all", batch_size: int = 64,
+             max_samples: int | None = None, nan_mode: str = "negative") -> Path:
     """Run eval_model.py for one model. Returns path to results CSV."""
     cmd = [
         sys.executable, str(REPO_ROOT / "baseline_eval" / "eval_model.py"),
@@ -248,7 +251,10 @@ def run_eval(model: dict, paired_dir: str, csv: str,
         "--csv", csv,
         "--query_mode", query_mode,
         "--batch_size", str(batch_size),
+        "--nan-mode", nan_mode,
     ]
+    if max_samples is not None:
+        cmd += ["--max_samples", str(max_samples)]
     if model.get("checkpoint"):
         cmd += ["--cxrclip_checkpoint", str(CHECKPOINTS_DIR / model["checkpoint"])]
     if model["model_type"] == "finetuned":
@@ -546,6 +552,8 @@ def main():
     )
     parser.add_argument("--paired_dir", required=True)
     parser.add_argument("--csv", required=False,default="cxr_data/all_txt_data_and_labels.csv",)
+    parser.add_argument("--max_samples", type=int, default=None,
+                        help="Limit number of dataset items to evaluate(default: all, which is 5159 for cxr dataset)")
     parser.add_argument("--output_dir", required=True,
                         help="Directory to store all results CSVs and plots for this experiment")
     parser.add_argument("--query_mode", default="all",
@@ -555,6 +563,10 @@ def main():
                         help="Skip models whose results CSV already exists")
     parser.add_argument("--batch_size", type=int, default=64,
                         help="Batch size for image and text encoding (default: 64)")
+    parser.add_argument("--nan-mode", default="negative", choices=["negative", "ignore"],
+                        help="How to treat NaN labels in negative-query relevance. "
+                             "'negative' (default): NaN counts as absent (same as CSV 0). "
+                             "'ignore': only CSV 0 counts as absent; NaN images are excluded.")
     parser.add_argument("--wandb-project", default=None,
                         help="W&B project name. Omit to disable W&B logging.")
     parser.add_argument("--wandb-run-name", default=None,
@@ -595,6 +607,8 @@ def main():
                     model, args.paired_dir, args.csv,
                     query_mode=args.query_mode,
                     batch_size=args.batch_size,
+                    max_samples=args.max_samples,
+                    nan_mode=args.nan_mode,
                 )
                 if raw_path.exists() and raw_path != out_path:
                     shutil.move(str(raw_path), out_path)  # rename fails cross-filesystem

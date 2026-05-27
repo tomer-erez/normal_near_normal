@@ -383,6 +383,15 @@ def main():
                              "Saves to results_{name}.csv. Defaults to model_type.")
     parser.add_argument("--ks", type=int, nargs="+", default=[1, 5, 10])
     parser.add_argument("--batch_size", type=int, default=64)
+    parser.add_argument("--max_samples", type=int, default=None,
+                        help="Cap the gallery to the first N images (useful for quick smoke tests)")
+    parser.add_argument("--nan-mode", default="negative", choices=["negative", "ignore"],
+                        help="How to treat NaN (not-mentioned) labels when deciding relevance for "
+                             "negative queries. "
+                             "'negative' (default): NaN and CSV 0 are both considered absent — "
+                             "an image is relevant to 'X and no Y' if Y==0 OR Y is NaN. "
+                             "'ignore': only CSV 0 counts as absent — NaN images are excluded "
+                             "from both relevant and irrelevant sets for that label.")
     args = parser.parse_args()
 
     if args.model_type == "cxrclip" and not args.cxrclip_checkpoint:
@@ -426,23 +435,26 @@ def main():
     # ── Load image paths from paired_dir ──────────────────────────────────────
     paired_dir = Path(args.paired_dir)
     image_paths = sorted(paired_dir.glob("*.jpg"))
+    if args.max_samples is not None:
+        image_paths = image_paths[: args.max_samples]
     dicom_ids = [p.stem for p in image_paths]
     n_total = len(image_paths)
-    log.info(f"Found {n_total:,} images in paired_dir")
+    log.info(f"Found {n_total:,} images in paired_dir (max_samples={args.max_samples})")
 
     # ── Encode images (with disk cache) ──────────────────────────────────────
+    ms_tag = f"_n{args.max_samples}" if args.max_samples is not None else ""
     if args.cxrclip_checkpoint:
-        cache_name = f"img_emb_{args.model_type}_{Path(args.cxrclip_checkpoint).stem}.npy"
+        cache_name = f"img_emb_{args.model_type}_{Path(args.cxrclip_checkpoint).stem}{ms_tag}.npy"
     elif args.model_type == "cxrclip_hybrid":
         ckpt = Path(args.hybrid_merged_checkpoint)
         img_stem = Path(args.cxrclip_image_checkpoint).stem
-        cache_name = f"img_emb_hybrid_{img_stem}_{ckpt.parent.name}_{ckpt.stem}.npy"
+        cache_name = f"img_emb_hybrid_{img_stem}_{ckpt.parent.name}_{ckpt.stem}{ms_tag}.npy"
     elif args.model_type == "finetuned":
         ckpt = Path(args.finetuned_checkpoint)
         # Use parent dir name + stem so different experiments don't collide on "final_merged"
-        cache_name = f"img_emb_finetuned_{ckpt.parent.name}_{ckpt.stem}.npy"
+        cache_name = f"img_emb_finetuned_{ckpt.parent.name}_{ckpt.stem}{ms_tag}.npy"
     else:
-        cache_name = f"img_emb_{args.model_type}.npy"
+        cache_name = f"img_emb_{args.model_type}{ms_tag}.npy"
     cache_path = paired_dir.parent / cache_name
 
     if cache_path.exists():
@@ -486,11 +498,15 @@ def main():
         pos_ok = (label_matrix[:, pos_indices] == 1.0).all(axis=1)
 
         if neg_indices:
-            # Negative condition: neg label == 0 (explicitly ruled out) OR NaN
-            # (not mentioned). Both mean the pathology is absent/unconfirmed.
-            # CSV -1 (uncertain) does NOT count as absent.
             neg_cols = label_matrix[:, neg_indices]
-            neg_ok = ((neg_cols == 0.0) | np.isnan(neg_cols)).all(axis=1)
+            if args.nan_mode == "negative":
+                # NaN (not mentioned) and CSV 0 (explicitly ruled out) both count as absent.
+                # CSV -1 (uncertain) does NOT count as absent.
+                neg_ok = ((neg_cols == 0.0) | np.isnan(neg_cols)).all(axis=1)
+            else:
+                # Only CSV 0 (explicitly ruled out) counts as absent.
+                # NaN images are not considered relevant for this negative label.
+                neg_ok = (neg_cols == 0.0).all(axis=1)
             relevant_mask = pos_ok & neg_ok
         else:
             relevant_mask = pos_ok

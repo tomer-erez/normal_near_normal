@@ -125,6 +125,10 @@ def parse_args():
                    help="Fraction of training data held out for validation when --val-csv is not given. "
                         "Set to 0 to disable validation entirely.")
     p.add_argument("--caption-mode", default="both", choices=["single", "pair", "both", "negative", "all"])
+    p.add_argument("--nan-mode", default="negative", choices=["negative", "ignore"],
+                   help="How to encode NaN (not-mentioned) labels. "
+                        "'negative' (default): NaN and CSV 0 are both treated as absent (-1.0). "
+                        "'ignore': only CSV 0 counts as absent (-1.0); NaN is ignored (0.0).")
     p.add_argument("--max-samples", type=int, default=None,
                    help="Cap dataset size (useful for debugging)")
     # LoRA
@@ -496,6 +500,7 @@ def main():
         transform=preprocess_train,
         tokenizer=tokenizer,
         caption_mode=args.caption_mode,
+        nan_mode=args.nan_mode,
         max_samples=args.max_samples,
         seed=args.seed,
     )
@@ -512,6 +517,7 @@ def main():
             transform=preprocess_train,
             tokenizer=tokenizer,
             caption_mode=args.caption_mode,
+            nan_mode=args.nan_mode,
             seed=args.seed,
         )
         if is_main:
