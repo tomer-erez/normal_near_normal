@@ -222,6 +222,15 @@ MODELS = [
         "finetuned_pretrained": "",
         "finetuned_checkpoint": "experiments/vitb32_sigliploss_negaware_bs32_no_conflict_zeriong_version/final_merged.pt",
     },
+
+                                {
+        "name": "mode_ignore_nan_negaware",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/vitb32_cliploss_negaware_nanmode_ignore/final_merged.pt",
+    },
 ]
 
 KS = [1, 5, 10]
@@ -542,6 +551,105 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
             log.info(f"Saved → {path}")
 
 
+# ── Publication-style table plots ────────────────────────────────────────────
+
+def make_table_plots(macro_summary: pd.DataFrame, plots_dir: Path):
+    """
+    Render one PNG table per query type (single / pair / negative).
+    Layout mirrors a LaTeX booktabs table:
+      - Dark header row with white bold text
+      - Alternating white / light-grey row shading
+      - Best value per column highlighted green and bolded
+    """
+    plots_dir.mkdir(parents=True, exist_ok=True)
+
+    # colours
+    HDR_BG   = "#2c3e50"   # dark slate header background
+    HDR_FG   = "white"
+    ROW_ODD  = "white"
+    ROW_EVEN = "#f2f2f2"   # very light grey
+    BEST_BG  = "#c8f0d0"   # soft green for best-in-column
+    ROW_LBL  = "#dce3ea"   # muted blue-grey for row-label column
+
+    for qtype in ["single", "pair", "negative"]:
+        cols = [f"{qtype}_{m}" for m in METRIC_COLS]
+        available = [c for c in cols if c in macro_summary.columns]
+        if not available:
+            continue
+
+        models  = macro_summary["model"].tolist()
+        n_rows  = len(models)
+        n_cols  = len(available)
+        col_headers = [c.replace(f"{qtype}_", "") for c in available]
+
+        data = macro_summary[available].values.astype(float)  # (n_rows, n_cols)
+        best_row = np.nanargmax(data, axis=0)                 # index of best per column
+
+        # ── build cell text & colours ─────────────────────────────────────────
+        cell_text   = []
+        cell_colors = []
+        for i, _ in enumerate(models):
+            row_txt = []
+            row_clr = []
+            base_bg = ROW_ODD if i % 2 == 0 else ROW_EVEN
+            for j in range(n_cols):
+                val = data[i, j]
+                row_txt.append(f"{val:.4f}" if not np.isnan(val) else "—")
+                row_clr.append(BEST_BG if best_row[j] == i else base_bg)
+            cell_text.append(row_txt)
+            cell_colors.append(row_clr)
+
+        # ── figure ────────────────────────────────────────────────────────────
+        col_w   = 1.1
+        row_h   = 0.45
+        lbl_w   = max(len(m) for m in models) * 0.11  # proportional to longest name
+        fig_w   = lbl_w + n_cols * col_w + 0.4
+        fig_h   = 0.7 + n_rows * row_h + 0.5
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        ax.axis("off")
+
+        tbl = ax.table(
+            cellText=cell_text,
+            rowLabels=models,
+            colLabels=col_headers,
+            cellColours=cell_colors,
+            rowColours=[ROW_LBL] * n_rows,
+            colColours=[HDR_BG]  * n_cols,
+            loc="center",
+            cellLoc="center",
+        )
+        tbl.auto_set_font_size(False)
+        tbl.set_fontsize(9)
+        tbl.scale(1, 1.6)
+
+        # style header cells
+        for j in range(n_cols):
+            cell = tbl[0, j]
+            cell.set_text_props(color=HDR_FG, fontweight="bold")
+            cell.set_edgecolor("#444444")
+
+        # bold best-in-column values
+        for j, best_i in enumerate(best_row):
+            tbl[best_i + 1, j].set_text_props(fontweight="bold")
+
+        # thicker top/bottom borders (booktabs feel)
+        for j in range(n_cols):
+            tbl[0,          j].set_linewidth(1.5)
+            tbl[n_rows,     j].set_linewidth(1.5)
+
+        ax.set_title(
+            f"Macro retrieval metrics — {qtype} label queries\n"
+            r"(green = best per column)",
+            fontsize=11, fontweight="bold", pad=10,
+        )
+
+        plt.tight_layout()
+        path = plots_dir / f"table_{qtype}.png"
+        fig.savefig(path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        log.info(f"Saved → {path}")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -650,6 +758,7 @@ def main():
     # ── Generate plots ────────────────────────────────────────────────────────
     plots_dir = output_dir / "plots"
     make_plots(all_results, macro_summary, plots_dir)
+    make_table_plots(macro_summary, plots_dir)
 
     # ── W&B logging ───────────────────────────────────────────────────────────
     if args.wandb_project:

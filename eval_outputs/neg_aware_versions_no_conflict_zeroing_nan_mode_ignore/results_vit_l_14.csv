@@ -1,64 +1,64 @@
 query,type,n_relevant,pos_labels,neg_labels,P@1,R@1,P@5,R@5,P@10,R@10
-atelectasis,single,1034,chexpert_Atelectasis,,0.0,0.0,0.2,0.0009671179883945841,0.1,0.0009671179883945841
-cardiomegaly,single,1258,chexpert_Cardiomegaly,,1.0,0.000794912559618442,0.6,0.0023847376788553257,0.3,0.0023847376788553257
-consolidation,single,326,chexpert_Consolidation,,0.0,0.0,0.0,0.0,0.0,0.0
-edema,single,959,chexpert_Edema,,0.0,0.0,0.4,0.0020855057351407717,0.3,0.0031282586027111575
-enlarged cardiomediastinum,single,200,chexpert_Enlarged Cardiomediastinum,,0.0,0.0,0.0,0.0,0.0,0.0
-fracture,single,167,chexpert_Fracture,,0.0,0.0,0.0,0.0,0.0,0.0
-lung lesion,single,202,chexpert_Lung Lesion,,0.0,0.0,0.0,0.0,0.0,0.0
-lung opacity,single,1561,chexpert_Lung Opacity,,1.0,0.0006406149903907751,0.6,0.0019218449711723255,0.4,0.0025624599615631004
-no finding,single,984,chexpert_No Finding,,0.0,0.0,0.4,0.0020325203252032522,0.2,0.0020325203252032522
-pleural effusion,single,1542,chexpert_Pleural Effusion,,1.0,0.0006485084306095979,0.4,0.0012970168612191958,0.5,0.00324254215304799
-pleural other,single,119,chexpert_Pleural Other,,0.0,0.0,0.0,0.0,0.0,0.0
-pneumonia,single,539,chexpert_Pneumonia,,0.0,0.0,0.2,0.0018552875695732839,0.1,0.0018552875695732839
-pneumothorax,single,144,chexpert_Pneumothorax,,0.0,0.0,0.0,0.0,0.0,0.0
-atelectasis and cardiomegaly,pair,350,"chexpert_Atelectasis,chexpert_Cardiomegaly",,0.0,0.0,0.0,0.0,0.0,0.0
-atelectasis and consolidation,pair,64,"chexpert_Atelectasis,chexpert_Consolidation",,0.0,0.0,0.0,0.0,0.0,0.0
+atelectasis,single,1034,chexpert_Atelectasis,,0.0,0.0,0.6,0.0029013539651837525,0.6,0.005802707930367505
+cardiomegaly,single,1258,chexpert_Cardiomegaly,,1.0,0.000794912559618442,0.8,0.003179650238473768,0.8,0.006359300476947536
+consolidation,single,326,chexpert_Consolidation,,1.0,0.003067484662576687,0.4,0.006134969325153374,0.3,0.009202453987730062
+edema,single,959,chexpert_Edema,,1.0,0.0010427528675703858,0.6,0.0031282586027111575,0.6,0.006256517205422315
+enlarged cardiomediastinum,single,200,chexpert_Enlarged Cardiomediastinum,,0.0,0.0,0.2,0.005,0.2,0.01
+fracture,single,167,chexpert_Fracture,,0.0,0.0,0.0,0.0,0.1,0.005988023952095809
+lung lesion,single,202,chexpert_Lung Lesion,,1.0,0.0049504950495049506,0.2,0.0049504950495049506,0.2,0.009900990099009901
+lung opacity,single,1561,chexpert_Lung Opacity,,1.0,0.0006406149903907751,0.8,0.0025624599615631004,0.6,0.003843689942344651
+no finding,single,984,chexpert_No Finding,,1.0,0.0010162601626016261,0.8,0.0040650406504065045,0.9,0.009146341463414634
+pleural effusion,single,1542,chexpert_Pleural Effusion,,0.0,0.0,0.6,0.0019455252918287938,0.7,0.004539559014267186
+pleural other,single,119,chexpert_Pleural Other,,0.0,0.0,0.2,0.008403361344537815,0.1,0.008403361344537815
+pneumonia,single,539,chexpert_Pneumonia,,1.0,0.0018552875695732839,0.8,0.0074211502782931356,0.8,0.014842300556586271
+pneumothorax,single,144,chexpert_Pneumothorax,,1.0,0.006944444444444444,0.6,0.020833333333333332,0.4,0.027777777777777776
+atelectasis and cardiomegaly,pair,350,"chexpert_Atelectasis,chexpert_Cardiomegaly",,1.0,0.002857142857142857,0.2,0.002857142857142857,0.2,0.005714285714285714
+atelectasis and consolidation,pair,64,"chexpert_Atelectasis,chexpert_Consolidation",,0.0,0.0,0.0,0.0,0.1,0.015625
 atelectasis and edema,pair,233,"chexpert_Atelectasis,chexpert_Edema",,0.0,0.0,0.0,0.0,0.0,0.0
-atelectasis and enlarged cardiomediastinum,pair,68,"chexpert_Atelectasis,chexpert_Enlarged Cardiomediastinum",,0.0,0.0,0.0,0.0,0.0,0.0
+atelectasis and enlarged cardiomediastinum,pair,68,"chexpert_Atelectasis,chexpert_Enlarged Cardiomediastinum",,1.0,0.014705882352941176,0.2,0.014705882352941176,0.3,0.04411764705882353
 atelectasis and fracture,pair,29,"chexpert_Atelectasis,chexpert_Fracture",,0.0,0.0,0.0,0.0,0.0,0.0
-atelectasis and lung lesion,pair,32,"chexpert_Atelectasis,chexpert_Lung Lesion",,0.0,0.0,0.0,0.0,0.0,0.0
-atelectasis and lung opacity,pair,401,"chexpert_Atelectasis,chexpert_Lung Opacity",,0.0,0.0,0.0,0.0,0.1,0.0024937655860349127
+atelectasis and lung lesion,pair,32,"chexpert_Atelectasis,chexpert_Lung Lesion",,0.0,0.0,0.0,0.0,0.1,0.03125
+atelectasis and lung opacity,pair,401,"chexpert_Atelectasis,chexpert_Lung Opacity",,1.0,0.0024937655860349127,0.4,0.004987531172069825,0.2,0.004987531172069825
 atelectasis and no finding,pair,0,"chexpert_Atelectasis,chexpert_No Finding",,,,,,,
-atelectasis and pleural effusion,pair,600,"chexpert_Atelectasis,chexpert_Pleural Effusion",,0.0,0.0,0.0,0.0,0.0,0.0
+atelectasis and pleural effusion,pair,600,"chexpert_Atelectasis,chexpert_Pleural Effusion",,0.0,0.0,0.4,0.0033333333333333335,0.3,0.005
 atelectasis and pleural other,pair,7,"chexpert_Atelectasis,chexpert_Pleural Other",,0.0,0.0,0.0,0.0,0.0,0.0
-atelectasis and pneumonia,pair,105,"chexpert_Atelectasis,chexpert_Pneumonia",,0.0,0.0,0.0,0.0,0.0,0.0
-atelectasis and pneumothorax,pair,31,"chexpert_Atelectasis,chexpert_Pneumothorax",,0.0,0.0,0.0,0.0,0.0,0.0
+atelectasis and pneumonia,pair,105,"chexpert_Atelectasis,chexpert_Pneumonia",,0.0,0.0,0.2,0.009523809523809525,0.1,0.009523809523809525
+atelectasis and pneumothorax,pair,31,"chexpert_Atelectasis,chexpert_Pneumothorax",,0.0,0.0,0.2,0.03225806451612903,0.2,0.06451612903225806
 cardiomegaly and consolidation,pair,86,"chexpert_Cardiomegaly,chexpert_Consolidation",,1.0,0.011627906976744186,0.4,0.023255813953488372,0.2,0.023255813953488372
-cardiomegaly and edema,pair,403,"chexpert_Cardiomegaly,chexpert_Edema",,1.0,0.0024813895781637717,0.2,0.0024813895781637717,0.1,0.0024813895781637717
-cardiomegaly and enlarged cardiomediastinum,pair,51,"chexpert_Cardiomegaly,chexpert_Enlarged Cardiomediastinum",,0.0,0.0,0.0,0.0,0.1,0.0196078431372549
-cardiomegaly and fracture,pair,49,"chexpert_Cardiomegaly,chexpert_Fracture",,0.0,0.0,0.0,0.0,0.0,0.0
-cardiomegaly and lung lesion,pair,31,"chexpert_Cardiomegaly,chexpert_Lung Lesion",,0.0,0.0,0.0,0.0,0.0,0.0
-cardiomegaly and lung opacity,pair,368,"chexpert_Cardiomegaly,chexpert_Lung Opacity",,0.0,0.0,0.0,0.0,0.0,0.0
+cardiomegaly and edema,pair,403,"chexpert_Cardiomegaly,chexpert_Edema",,0.0,0.0,0.0,0.0,0.1,0.0024813895781637717
+cardiomegaly and enlarged cardiomediastinum,pair,51,"chexpert_Cardiomegaly,chexpert_Enlarged Cardiomediastinum",,0.0,0.0,0.0,0.0,0.0,0.0
+cardiomegaly and fracture,pair,49,"chexpert_Cardiomegaly,chexpert_Fracture",,1.0,0.02040816326530612,0.2,0.02040816326530612,0.3,0.061224489795918366
+cardiomegaly and lung lesion,pair,31,"chexpert_Cardiomegaly,chexpert_Lung Lesion",,0.0,0.0,0.2,0.03225806451612903,0.1,0.03225806451612903
+cardiomegaly and lung opacity,pair,368,"chexpert_Cardiomegaly,chexpert_Lung Opacity",,0.0,0.0,0.0,0.0,0.4,0.010869565217391304
 cardiomegaly and no finding,pair,0,"chexpert_Cardiomegaly,chexpert_No Finding",,,,,,,
-cardiomegaly and pleural effusion,pair,513,"chexpert_Cardiomegaly,chexpert_Pleural Effusion",,0.0,0.0,0.0,0.0,0.0,0.0
+cardiomegaly and pleural effusion,pair,513,"chexpert_Cardiomegaly,chexpert_Pleural Effusion",,0.0,0.0,0.6,0.005847953216374269,0.5,0.009746588693957114
 cardiomegaly and pleural other,pair,33,"chexpert_Cardiomegaly,chexpert_Pleural Other",,0.0,0.0,0.0,0.0,0.0,0.0
-cardiomegaly and pneumonia,pair,125,"chexpert_Cardiomegaly,chexpert_Pneumonia",,0.0,0.0,0.0,0.0,0.0,0.0
-cardiomegaly and pneumothorax,pair,21,"chexpert_Cardiomegaly,chexpert_Pneumothorax",,0.0,0.0,0.0,0.0,0.0,0.0
+cardiomegaly and pneumonia,pair,125,"chexpert_Cardiomegaly,chexpert_Pneumonia",,1.0,0.008,0.4,0.016,0.2,0.016
+cardiomegaly and pneumothorax,pair,21,"chexpert_Cardiomegaly,chexpert_Pneumothorax",,0.0,0.0,0.2,0.047619047619047616,0.1,0.047619047619047616
 consolidation and edema,pair,71,"chexpert_Consolidation,chexpert_Edema",,0.0,0.0,0.0,0.0,0.0,0.0
 consolidation and enlarged cardiomediastinum,pair,17,"chexpert_Consolidation,chexpert_Enlarged Cardiomediastinum",,0.0,0.0,0.0,0.0,0.0,0.0
 consolidation and fracture,pair,7,"chexpert_Consolidation,chexpert_Fracture",,0.0,0.0,0.0,0.0,0.0,0.0
-consolidation and lung lesion,pair,28,"chexpert_Consolidation,chexpert_Lung Lesion",,0.0,0.0,0.0,0.0,0.0,0.0
+consolidation and lung lesion,pair,28,"chexpert_Consolidation,chexpert_Lung Lesion",,0.0,0.0,0.2,0.03571428571428571,0.1,0.03571428571428571
 consolidation and lung opacity,pair,113,"chexpert_Consolidation,chexpert_Lung Opacity",,0.0,0.0,0.0,0.0,0.0,0.0
 consolidation and no finding,pair,0,"chexpert_Consolidation,chexpert_No Finding",,,,,,,
 consolidation and pleural effusion,pair,139,"chexpert_Consolidation,chexpert_Pleural Effusion",,0.0,0.0,0.0,0.0,0.0,0.0
 consolidation and pleural other,pair,6,"chexpert_Consolidation,chexpert_Pleural Other",,0.0,0.0,0.0,0.0,0.0,0.0
-consolidation and pneumonia,pair,70,"chexpert_Consolidation,chexpert_Pneumonia",,0.0,0.0,0.0,0.0,0.0,0.0
+consolidation and pneumonia,pair,70,"chexpert_Consolidation,chexpert_Pneumonia",,0.0,0.0,0.0,0.0,0.1,0.014285714285714285
 consolidation and pneumothorax,pair,7,"chexpert_Consolidation,chexpert_Pneumothorax",,0.0,0.0,0.0,0.0,0.0,0.0
 edema and enlarged cardiomediastinum,pair,34,"chexpert_Edema,chexpert_Enlarged Cardiomediastinum",,0.0,0.0,0.0,0.0,0.0,0.0
 edema and fracture,pair,19,"chexpert_Edema,chexpert_Fracture",,0.0,0.0,0.0,0.0,0.0,0.0
 edema and lung lesion,pair,12,"chexpert_Edema,chexpert_Lung Lesion",,0.0,0.0,0.0,0.0,0.0,0.0
-edema and lung opacity,pair,298,"chexpert_Edema,chexpert_Lung Opacity",,0.0,0.0,0.2,0.003355704697986577,0.2,0.006711409395973154
+edema and lung opacity,pair,298,"chexpert_Edema,chexpert_Lung Opacity",,0.0,0.0,0.0,0.0,0.2,0.006711409395973154
 edema and no finding,pair,0,"chexpert_Edema,chexpert_No Finding",,,,,,,
-edema and pleural effusion,pair,466,"chexpert_Edema,chexpert_Pleural Effusion",,1.0,0.002145922746781116,0.2,0.002145922746781116,0.1,0.002145922746781116
-edema and pleural other,pair,22,"chexpert_Edema,chexpert_Pleural Other",,0.0,0.0,0.0,0.0,0.0,0.0
-edema and pneumonia,pair,100,"chexpert_Edema,chexpert_Pneumonia",,0.0,0.0,0.2,0.01,0.1,0.01
+edema and pleural effusion,pair,466,"chexpert_Edema,chexpert_Pleural Effusion",,0.0,0.0,0.4,0.004291845493562232,0.6,0.012875536480686695
+edema and pleural other,pair,22,"chexpert_Edema,chexpert_Pleural Other",,0.0,0.0,0.2,0.045454545454545456,0.2,0.09090909090909091
+edema and pneumonia,pair,100,"chexpert_Edema,chexpert_Pneumonia",,0.0,0.0,0.0,0.0,0.1,0.01
 edema and pneumothorax,pair,11,"chexpert_Edema,chexpert_Pneumothorax",,0.0,0.0,0.0,0.0,0.0,0.0
-enlarged cardiomediastinum and fracture,pair,13,"chexpert_Enlarged Cardiomediastinum,chexpert_Fracture",,0.0,0.0,0.0,0.0,0.0,0.0
+enlarged cardiomediastinum and fracture,pair,13,"chexpert_Enlarged Cardiomediastinum,chexpert_Fracture",,0.0,0.0,0.2,0.07692307692307693,0.1,0.07692307692307693
 enlarged cardiomediastinum and lung lesion,pair,3,"chexpert_Enlarged Cardiomediastinum,chexpert_Lung Lesion",,0.0,0.0,0.0,0.0,0.0,0.0
 enlarged cardiomediastinum and lung opacity,pair,70,"chexpert_Enlarged Cardiomediastinum,chexpert_Lung Opacity",,0.0,0.0,0.0,0.0,0.0,0.0
 enlarged cardiomediastinum and no finding,pair,0,"chexpert_Enlarged Cardiomediastinum,chexpert_No Finding",,,,,,,
-enlarged cardiomediastinum and pleural effusion,pair,67,"chexpert_Enlarged Cardiomediastinum,chexpert_Pleural Effusion",,0.0,0.0,0.0,0.0,0.0,0.0
+enlarged cardiomediastinum and pleural effusion,pair,67,"chexpert_Enlarged Cardiomediastinum,chexpert_Pleural Effusion",,1.0,0.014925373134328358,0.2,0.014925373134328358,0.1,0.014925373134328358
 enlarged cardiomediastinum and pleural other,pair,4,"chexpert_Enlarged Cardiomediastinum,chexpert_Pleural Other",,0.0,0.0,0.0,0.0,0.0,0.0
 enlarged cardiomediastinum and pneumonia,pair,9,"chexpert_Enlarged Cardiomediastinum,chexpert_Pneumonia",,0.0,0.0,0.0,0.0,0.0,0.0
 enlarged cardiomediastinum and pneumothorax,pair,16,"chexpert_Enlarged Cardiomediastinum,chexpert_Pneumothorax",,0.0,0.0,0.0,0.0,0.0,0.0
@@ -67,32 +67,32 @@ fracture and lung opacity,pair,27,"chexpert_Fracture,chexpert_Lung Opacity",,0.0
 fracture and no finding,pair,0,"chexpert_Fracture,chexpert_No Finding",,,,,,,
 fracture and pleural effusion,pair,42,"chexpert_Fracture,chexpert_Pleural Effusion",,0.0,0.0,0.0,0.0,0.0,0.0
 fracture and pleural other,pair,9,"chexpert_Fracture,chexpert_Pleural Other",,0.0,0.0,0.0,0.0,0.0,0.0
-fracture and pneumonia,pair,8,"chexpert_Fracture,chexpert_Pneumonia",,0.0,0.0,0.0,0.0,0.0,0.0
-fracture and pneumothorax,pair,6,"chexpert_Fracture,chexpert_Pneumothorax",,0.0,0.0,0.0,0.0,0.0,0.0
-lung lesion and lung opacity,pair,109,"chexpert_Lung Lesion,chexpert_Lung Opacity",,0.0,0.0,0.0,0.0,0.1,0.009174311926605505
+fracture and pneumonia,pair,8,"chexpert_Fracture,chexpert_Pneumonia",,0.0,0.0,0.2,0.125,0.2,0.25
+fracture and pneumothorax,pair,6,"chexpert_Fracture,chexpert_Pneumothorax",,1.0,0.16666666666666666,0.2,0.16666666666666666,0.1,0.16666666666666666
+lung lesion and lung opacity,pair,109,"chexpert_Lung Lesion,chexpert_Lung Opacity",,1.0,0.009174311926605505,0.4,0.01834862385321101,0.2,0.01834862385321101
 lung lesion and no finding,pair,0,"chexpert_Lung Lesion,chexpert_No Finding",,,,,,,
-lung lesion and pleural effusion,pair,67,"chexpert_Lung Lesion,chexpert_Pleural Effusion",,0.0,0.0,0.0,0.0,0.0,0.0
+lung lesion and pleural effusion,pair,67,"chexpert_Lung Lesion,chexpert_Pleural Effusion",,1.0,0.014925373134328358,0.2,0.014925373134328358,0.1,0.014925373134328358
 lung lesion and pleural other,pair,5,"chexpert_Lung Lesion,chexpert_Pleural Other",,0.0,0.0,0.0,0.0,0.0,0.0
 lung lesion and pneumonia,pair,33,"chexpert_Lung Lesion,chexpert_Pneumonia",,0.0,0.0,0.0,0.0,0.0,0.0
 lung lesion and pneumothorax,pair,6,"chexpert_Lung Lesion,chexpert_Pneumothorax",,0.0,0.0,0.0,0.0,0.0,0.0
 lung opacity and no finding,pair,0,"chexpert_Lung Opacity,chexpert_No Finding",,,,,,,
-lung opacity and pleural effusion,pair,559,"chexpert_Lung Opacity,chexpert_Pleural Effusion",,0.0,0.0,0.0,0.0,0.1,0.0017889087656529517
-lung opacity and pleural other,pair,38,"chexpert_Lung Opacity,chexpert_Pleural Other",,0.0,0.0,0.0,0.0,0.0,0.0
+lung opacity and pleural effusion,pair,559,"chexpert_Lung Opacity,chexpert_Pleural Effusion",,0.0,0.0,0.4,0.0035778175313059034,0.3,0.005366726296958855
+lung opacity and pleural other,pair,38,"chexpert_Lung Opacity,chexpert_Pleural Other",,0.0,0.0,0.2,0.02631578947368421,0.2,0.05263157894736842
 lung opacity and pneumonia,pair,269,"chexpert_Lung Opacity,chexpert_Pneumonia",,0.0,0.0,0.0,0.0,0.1,0.0037174721189591076
-lung opacity and pneumothorax,pair,50,"chexpert_Lung Opacity,chexpert_Pneumothorax",,0.0,0.0,0.0,0.0,0.0,0.0
+lung opacity and pneumothorax,pair,50,"chexpert_Lung Opacity,chexpert_Pneumothorax",,0.0,0.0,0.0,0.0,0.1,0.02
 no finding and pleural effusion,pair,0,"chexpert_No Finding,chexpert_Pleural Effusion",,,,,,,
 no finding and pleural other,pair,0,"chexpert_No Finding,chexpert_Pleural Other",,,,,,,
 no finding and pneumonia,pair,0,"chexpert_No Finding,chexpert_Pneumonia",,,,,,,
 no finding and pneumothorax,pair,0,"chexpert_No Finding,chexpert_Pneumothorax",,,,,,,
 pleural effusion and pleural other,pair,35,"chexpert_Pleural Effusion,chexpert_Pleural Other",,0.0,0.0,0.0,0.0,0.0,0.0
-pleural effusion and pneumonia,pair,155,"chexpert_Pleural Effusion,chexpert_Pneumonia",,0.0,0.0,0.0,0.0,0.0,0.0
-pleural effusion and pneumothorax,pair,53,"chexpert_Pleural Effusion,chexpert_Pneumothorax",,0.0,0.0,0.0,0.0,0.0,0.0
-pleural other and pneumonia,pair,25,"chexpert_Pleural Other,chexpert_Pneumonia",,0.0,0.0,0.0,0.0,0.0,0.0
+pleural effusion and pneumonia,pair,155,"chexpert_Pleural Effusion,chexpert_Pneumonia",,0.0,0.0,0.0,0.0,0.1,0.0064516129032258064
+pleural effusion and pneumothorax,pair,53,"chexpert_Pleural Effusion,chexpert_Pneumothorax",,0.0,0.0,0.4,0.03773584905660377,0.4,0.07547169811320754
+pleural other and pneumonia,pair,25,"chexpert_Pleural Other,chexpert_Pneumonia",,0.0,0.0,0.2,0.04,0.3,0.12
 pleural other and pneumothorax,pair,2,"chexpert_Pleural Other,chexpert_Pneumothorax",,0.0,0.0,0.0,0.0,0.0,0.0
 pneumonia and pneumothorax,pair,10,"chexpert_Pneumonia,chexpert_Pneumothorax",,0.0,0.0,0.0,0.0,0.0,0.0
-atelectasis and no cardiomegaly,negative,59,chexpert_Atelectasis,chexpert_Cardiomegaly,0.0,0.0,0.0,0.0,0.0,0.0
+atelectasis and no cardiomegaly,negative,59,chexpert_Atelectasis,chexpert_Cardiomegaly,0.0,0.0,0.0,0.0,0.1,0.01694915254237288
 atelectasis and no consolidation,negative,26,chexpert_Atelectasis,chexpert_Consolidation,0.0,0.0,0.0,0.0,0.0,0.0
-atelectasis and no edema,negative,118,chexpert_Atelectasis,chexpert_Edema,0.0,0.0,0.0,0.0,0.1,0.00847457627118644
+atelectasis and no edema,negative,118,chexpert_Atelectasis,chexpert_Edema,0.0,0.0,0.0,0.0,0.0,0.0
 atelectasis and no enlarged cardiomediastinum,negative,29,chexpert_Atelectasis,chexpert_Enlarged Cardiomediastinum,0.0,0.0,0.0,0.0,0.0,0.0
 atelectasis and no fracture,negative,1,chexpert_Atelectasis,chexpert_Fracture,0.0,0.0,0.0,0.0,0.0,0.0
 atelectasis and no lung lesion,negative,4,chexpert_Atelectasis,chexpert_Lung Lesion,0.0,0.0,0.0,0.0,0.0,0.0
@@ -102,9 +102,9 @@ atelectasis and no pleural effusion,negative,94,chexpert_Atelectasis,chexpert_Pl
 atelectasis and no pleural other,negative,0,chexpert_Atelectasis,chexpert_Pleural Other,,,,,,
 atelectasis and no pneumonia,negative,96,chexpert_Atelectasis,chexpert_Pneumonia,0.0,0.0,0.0,0.0,0.0,0.0
 atelectasis and no pneumothorax,negative,301,chexpert_Atelectasis,chexpert_Pneumothorax,0.0,0.0,0.2,0.0033222591362126247,0.1,0.0033222591362126247
-cardiomegaly and no atelectasis,negative,9,chexpert_Cardiomegaly,chexpert_Atelectasis,0.0,0.0,0.0,0.0,0.0,0.0
+cardiomegaly and no atelectasis,negative,9,chexpert_Cardiomegaly,chexpert_Atelectasis,0.0,0.0,0.0,0.0,0.1,0.1111111111111111
 cardiomegaly and no consolidation,negative,61,chexpert_Cardiomegaly,chexpert_Consolidation,0.0,0.0,0.0,0.0,0.0,0.0
-cardiomegaly and no edema,negative,221,chexpert_Cardiomegaly,chexpert_Edema,0.0,0.0,0.0,0.0,0.1,0.004524886877828055
+cardiomegaly and no edema,negative,221,chexpert_Cardiomegaly,chexpert_Edema,0.0,0.0,0.0,0.0,0.0,0.0
 cardiomegaly and no enlarged cardiomediastinum,negative,19,chexpert_Cardiomegaly,chexpert_Enlarged Cardiomediastinum,0.0,0.0,0.0,0.0,0.0,0.0
 cardiomegaly and no fracture,negative,3,chexpert_Cardiomegaly,chexpert_Fracture,0.0,0.0,0.0,0.0,0.0,0.0
 cardiomegaly and no lung lesion,negative,5,chexpert_Cardiomegaly,chexpert_Lung Lesion,0.0,0.0,0.0,0.0,0.0,0.0
@@ -112,8 +112,8 @@ cardiomegaly and no lung opacity,negative,36,chexpert_Cardiomegaly,chexpert_Lung
 cardiomegaly and no no finding,negative,0,chexpert_Cardiomegaly,chexpert_No Finding,,,,,,
 cardiomegaly and no pleural effusion,negative,228,chexpert_Cardiomegaly,chexpert_Pleural Effusion,0.0,0.0,0.0,0.0,0.0,0.0
 cardiomegaly and no pleural other,negative,0,chexpert_Cardiomegaly,chexpert_Pleural Other,,,,,,
-cardiomegaly and no pneumonia,negative,175,chexpert_Cardiomegaly,chexpert_Pneumonia,0.0,0.0,0.2,0.005714285714285714,0.2,0.011428571428571429
-cardiomegaly and no pneumothorax,negative,391,chexpert_Cardiomegaly,chexpert_Pneumothorax,0.0,0.0,0.0,0.0,0.2,0.005115089514066497
+cardiomegaly and no pneumonia,negative,175,chexpert_Cardiomegaly,chexpert_Pneumonia,0.0,0.0,0.0,0.0,0.0,0.0
+cardiomegaly and no pneumothorax,negative,391,chexpert_Cardiomegaly,chexpert_Pneumothorax,0.0,0.0,0.0,0.0,0.0,0.0
 consolidation and no atelectasis,negative,1,chexpert_Consolidation,chexpert_Atelectasis,0.0,0.0,0.0,0.0,0.0,0.0
 consolidation and no cardiomegaly,negative,26,chexpert_Consolidation,chexpert_Cardiomegaly,0.0,0.0,0.0,0.0,0.0,0.0
 consolidation and no edema,negative,29,chexpert_Consolidation,chexpert_Edema,0.0,0.0,0.0,0.0,0.0,0.0
@@ -134,10 +134,10 @@ edema and no fracture,negative,3,chexpert_Edema,chexpert_Fracture,0.0,0.0,0.0,0.
 edema and no lung lesion,negative,0,chexpert_Edema,chexpert_Lung Lesion,,,,,,
 edema and no lung opacity,negative,8,chexpert_Edema,chexpert_Lung Opacity,0.0,0.0,0.0,0.0,0.0,0.0
 edema and no no finding,negative,0,chexpert_Edema,chexpert_No Finding,,,,,,
-edema and no pleural effusion,negative,52,chexpert_Edema,chexpert_Pleural Effusion,0.0,0.0,0.0,0.0,0.0,0.0
+edema and no pleural effusion,negative,52,chexpert_Edema,chexpert_Pleural Effusion,1.0,0.019230769230769232,0.2,0.019230769230769232,0.1,0.019230769230769232
 edema and no pleural other,negative,0,chexpert_Edema,chexpert_Pleural Other,,,,,,
-edema and no pneumonia,negative,50,chexpert_Edema,chexpert_Pneumonia,0.0,0.0,0.0,0.0,0.0,0.0
-edema and no pneumothorax,negative,216,chexpert_Edema,chexpert_Pneumothorax,0.0,0.0,0.0,0.0,0.1,0.004629629629629629
+edema and no pneumonia,negative,50,chexpert_Edema,chexpert_Pneumonia,0.0,0.0,0.0,0.0,0.1,0.02
+edema and no pneumothorax,negative,216,chexpert_Edema,chexpert_Pneumothorax,1.0,0.004629629629629629,0.2,0.004629629629629629,0.1,0.004629629629629629
 enlarged cardiomediastinum and no atelectasis,negative,2,chexpert_Enlarged Cardiomediastinum,chexpert_Atelectasis,0.0,0.0,0.0,0.0,0.0,0.0
 enlarged cardiomediastinum and no cardiomegaly,negative,24,chexpert_Enlarged Cardiomediastinum,chexpert_Cardiomegaly,0.0,0.0,0.0,0.0,0.0,0.0
 enlarged cardiomediastinum and no consolidation,negative,13,chexpert_Enlarged Cardiomediastinum,chexpert_Consolidation,0.0,0.0,0.0,0.0,0.0,0.0
@@ -149,7 +149,7 @@ enlarged cardiomediastinum and no no finding,negative,0,chexpert_Enlarged Cardio
 enlarged cardiomediastinum and no pleural effusion,negative,43,chexpert_Enlarged Cardiomediastinum,chexpert_Pleural Effusion,0.0,0.0,0.0,0.0,0.0,0.0
 enlarged cardiomediastinum and no pleural other,negative,0,chexpert_Enlarged Cardiomediastinum,chexpert_Pleural Other,,,,,,
 enlarged cardiomediastinum and no pneumonia,negative,15,chexpert_Enlarged Cardiomediastinum,chexpert_Pneumonia,0.0,0.0,0.0,0.0,0.0,0.0
-enlarged cardiomediastinum and no pneumothorax,negative,92,chexpert_Enlarged Cardiomediastinum,chexpert_Pneumothorax,0.0,0.0,0.0,0.0,0.0,0.0
+enlarged cardiomediastinum and no pneumothorax,negative,92,chexpert_Enlarged Cardiomediastinum,chexpert_Pneumothorax,1.0,0.010869565217391304,0.2,0.010869565217391304,0.2,0.021739130434782608
 fracture and no atelectasis,negative,0,chexpert_Fracture,chexpert_Atelectasis,,,,,,
 fracture and no cardiomegaly,negative,22,chexpert_Fracture,chexpert_Cardiomegaly,0.0,0.0,0.0,0.0,0.0,0.0
 fracture and no consolidation,negative,12,chexpert_Fracture,chexpert_Consolidation,0.0,0.0,0.0,0.0,0.0,0.0
@@ -160,7 +160,7 @@ fracture and no lung opacity,negative,8,chexpert_Fracture,chexpert_Lung Opacity,
 fracture and no no finding,negative,0,chexpert_Fracture,chexpert_No Finding,,,,,,
 fracture and no pleural effusion,negative,40,chexpert_Fracture,chexpert_Pleural Effusion,0.0,0.0,0.0,0.0,0.0,0.0
 fracture and no pleural other,negative,0,chexpert_Fracture,chexpert_Pleural Other,,,,,,
-fracture and no pneumonia,negative,34,chexpert_Fracture,chexpert_Pneumonia,0.0,0.0,0.0,0.0,0.0,0.0
+fracture and no pneumonia,negative,34,chexpert_Fracture,chexpert_Pneumonia,1.0,0.029411764705882353,0.2,0.029411764705882353,0.1,0.029411764705882353
 fracture and no pneumothorax,negative,52,chexpert_Fracture,chexpert_Pneumothorax,0.0,0.0,0.0,0.0,0.0,0.0
 lung lesion and no atelectasis,negative,0,chexpert_Lung Lesion,chexpert_Atelectasis,,,,,,
 lung lesion and no cardiomegaly,negative,15,chexpert_Lung Lesion,chexpert_Cardiomegaly,0.0,0.0,0.0,0.0,0.0,0.0
@@ -185,7 +185,7 @@ lung opacity and no no finding,negative,0,chexpert_Lung Opacity,chexpert_No Find
 lung opacity and no pleural effusion,negative,167,chexpert_Lung Opacity,chexpert_Pleural Effusion,0.0,0.0,0.0,0.0,0.0,0.0
 lung opacity and no pleural other,negative,0,chexpert_Lung Opacity,chexpert_Pleural Other,,,,,,
 lung opacity and no pneumonia,negative,73,chexpert_Lung Opacity,chexpert_Pneumonia,0.0,0.0,0.0,0.0,0.0,0.0
-lung opacity and no pneumothorax,negative,352,chexpert_Lung Opacity,chexpert_Pneumothorax,0.0,0.0,0.0,0.0,0.0,0.0
+lung opacity and no pneumothorax,negative,352,chexpert_Lung Opacity,chexpert_Pneumothorax,1.0,0.002840909090909091,0.6,0.008522727272727272,0.4,0.011363636363636364
 no finding and no atelectasis,negative,4,chexpert_No Finding,chexpert_Atelectasis,0.0,0.0,0.0,0.0,0.0,0.0
 no finding and no cardiomegaly,negative,35,chexpert_No Finding,chexpert_Cardiomegaly,0.0,0.0,0.0,0.0,0.0,0.0
 no finding and no consolidation,negative,16,chexpert_No Finding,chexpert_Consolidation,0.0,0.0,0.0,0.0,0.0,0.0
@@ -194,22 +194,22 @@ no finding and no enlarged cardiomediastinum,negative,12,chexpert_No Finding,che
 no finding and no fracture,negative,2,chexpert_No Finding,chexpert_Fracture,0.0,0.0,0.0,0.0,0.0,0.0
 no finding and no lung lesion,negative,4,chexpert_No Finding,chexpert_Lung Lesion,0.0,0.0,0.0,0.0,0.0,0.0
 no finding and no lung opacity,negative,14,chexpert_No Finding,chexpert_Lung Opacity,0.0,0.0,0.0,0.0,0.0,0.0
-no finding and no pleural effusion,negative,68,chexpert_No Finding,chexpert_Pleural Effusion,0.0,0.0,0.0,0.0,0.0,0.0
+no finding and no pleural effusion,negative,68,chexpert_No Finding,chexpert_Pleural Effusion,1.0,0.014705882352941176,0.2,0.014705882352941176,0.1,0.014705882352941176
 no finding and no pleural other,negative,0,chexpert_No Finding,chexpert_Pleural Other,,,,,,
 no finding and no pneumonia,negative,131,chexpert_No Finding,chexpert_Pneumonia,0.0,0.0,0.0,0.0,0.0,0.0
-no finding and no pneumothorax,negative,80,chexpert_No Finding,chexpert_Pneumothorax,0.0,0.0,0.0,0.0,0.0,0.0
+no finding and no pneumothorax,negative,80,chexpert_No Finding,chexpert_Pneumothorax,0.0,0.0,0.2,0.0125,0.1,0.0125
 pleural effusion and no atelectasis,negative,1,chexpert_Pleural Effusion,chexpert_Atelectasis,0.0,0.0,0.0,0.0,0.0,0.0
 pleural effusion and no cardiomegaly,negative,86,chexpert_Pleural Effusion,chexpert_Cardiomegaly,0.0,0.0,0.0,0.0,0.0,0.0
 pleural effusion and no consolidation,negative,28,chexpert_Pleural Effusion,chexpert_Consolidation,0.0,0.0,0.0,0.0,0.0,0.0
-pleural effusion and no edema,negative,112,chexpert_Pleural Effusion,chexpert_Edema,0.0,0.0,0.2,0.008928571428571428,0.1,0.008928571428571428
+pleural effusion and no edema,negative,112,chexpert_Pleural Effusion,chexpert_Edema,0.0,0.0,0.0,0.0,0.0,0.0
 pleural effusion and no enlarged cardiomediastinum,negative,30,chexpert_Pleural Effusion,chexpert_Enlarged Cardiomediastinum,0.0,0.0,0.0,0.0,0.0,0.0
 pleural effusion and no fracture,negative,0,chexpert_Pleural Effusion,chexpert_Fracture,,,,,,
 pleural effusion and no lung lesion,negative,10,chexpert_Pleural Effusion,chexpert_Lung Lesion,0.0,0.0,0.0,0.0,0.0,0.0
 pleural effusion and no lung opacity,negative,28,chexpert_Pleural Effusion,chexpert_Lung Opacity,0.0,0.0,0.0,0.0,0.0,0.0
 pleural effusion and no no finding,negative,0,chexpert_Pleural Effusion,chexpert_No Finding,,,,,,
 pleural effusion and no pleural other,negative,0,chexpert_Pleural Effusion,chexpert_Pleural Other,,,,,,
-pleural effusion and no pneumonia,negative,86,chexpert_Pleural Effusion,chexpert_Pneumonia,0.0,0.0,0.2,0.011627906976744186,0.1,0.011627906976744186
-pleural effusion and no pneumothorax,negative,439,chexpert_Pleural Effusion,chexpert_Pneumothorax,0.0,0.0,0.2,0.002277904328018223,0.2,0.004555808656036446
+pleural effusion and no pneumonia,negative,86,chexpert_Pleural Effusion,chexpert_Pneumonia,0.0,0.0,0.0,0.0,0.0,0.0
+pleural effusion and no pneumothorax,negative,439,chexpert_Pleural Effusion,chexpert_Pneumothorax,0.0,0.0,0.0,0.0,0.0,0.0
 pleural other and no atelectasis,negative,3,chexpert_Pleural Other,chexpert_Atelectasis,0.0,0.0,0.0,0.0,0.0,0.0
 pleural other and no cardiomegaly,negative,11,chexpert_Pleural Other,chexpert_Cardiomegaly,0.0,0.0,0.0,0.0,0.0,0.0
 pleural other and no consolidation,negative,12,chexpert_Pleural Other,chexpert_Consolidation,0.0,0.0,0.0,0.0,0.0,0.0
@@ -231,18 +231,18 @@ pneumonia and no fracture,negative,0,chexpert_Pneumonia,chexpert_Fracture,,,,,,
 pneumonia and no lung lesion,negative,7,chexpert_Pneumonia,chexpert_Lung Lesion,0.0,0.0,0.0,0.0,0.0,0.0
 pneumonia and no lung opacity,negative,16,chexpert_Pneumonia,chexpert_Lung Opacity,0.0,0.0,0.0,0.0,0.0,0.0
 pneumonia and no no finding,negative,0,chexpert_Pneumonia,chexpert_No Finding,,,,,,
-pneumonia and no pleural effusion,negative,63,chexpert_Pneumonia,chexpert_Pleural Effusion,0.0,0.0,0.0,0.0,0.0,0.0
+pneumonia and no pleural effusion,negative,63,chexpert_Pneumonia,chexpert_Pleural Effusion,0.0,0.0,0.2,0.015873015873015872,0.1,0.015873015873015872
 pneumonia and no pleural other,negative,0,chexpert_Pneumonia,chexpert_Pleural Other,,,,,,
-pneumonia and no pneumothorax,negative,83,chexpert_Pneumonia,chexpert_Pneumothorax,0.0,0.0,0.0,0.0,0.0,0.0
-pneumothorax and no atelectasis,negative,2,chexpert_Pneumothorax,chexpert_Atelectasis,0.0,0.0,0.0,0.0,0.0,0.0
+pneumonia and no pneumothorax,negative,83,chexpert_Pneumonia,chexpert_Pneumothorax,1.0,0.012048192771084338,0.2,0.012048192771084338,0.2,0.024096385542168676
+pneumothorax and no atelectasis,negative,2,chexpert_Pneumothorax,chexpert_Atelectasis,1.0,0.5,0.2,0.5,0.1,0.5
 pneumothorax and no cardiomegaly,negative,15,chexpert_Pneumothorax,chexpert_Cardiomegaly,0.0,0.0,0.0,0.0,0.0,0.0
 pneumothorax and no consolidation,negative,5,chexpert_Pneumothorax,chexpert_Consolidation,0.0,0.0,0.0,0.0,0.0,0.0
 pneumothorax and no edema,negative,13,chexpert_Pneumothorax,chexpert_Edema,0.0,0.0,0.0,0.0,0.0,0.0
-pneumothorax and no enlarged cardiomediastinum,negative,5,chexpert_Pneumothorax,chexpert_Enlarged Cardiomediastinum,0.0,0.0,0.0,0.0,0.0,0.0
+pneumothorax and no enlarged cardiomediastinum,negative,5,chexpert_Pneumothorax,chexpert_Enlarged Cardiomediastinum,1.0,0.2,0.2,0.2,0.1,0.2
 pneumothorax and no fracture,negative,0,chexpert_Pneumothorax,chexpert_Fracture,,,,,,
 pneumothorax and no lung lesion,negative,0,chexpert_Pneumothorax,chexpert_Lung Lesion,,,,,,
 pneumothorax and no lung opacity,negative,1,chexpert_Pneumothorax,chexpert_Lung Opacity,0.0,0.0,0.0,0.0,0.0,0.0
 pneumothorax and no no finding,negative,0,chexpert_Pneumothorax,chexpert_No Finding,,,,,,
-pneumothorax and no pleural effusion,negative,11,chexpert_Pneumothorax,chexpert_Pleural Effusion,0.0,0.0,0.0,0.0,0.0,0.0
+pneumothorax and no pleural effusion,negative,11,chexpert_Pneumothorax,chexpert_Pleural Effusion,0.0,0.0,0.0,0.0,0.1,0.09090909090909091
 pneumothorax and no pleural other,negative,0,chexpert_Pneumothorax,chexpert_Pleural Other,,,,,,
 pneumothorax and no pneumonia,negative,2,chexpert_Pneumothorax,chexpert_Pneumonia,0.0,0.0,0.0,0.0,0.0,0.0

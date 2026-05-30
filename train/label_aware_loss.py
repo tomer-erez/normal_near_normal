@@ -329,10 +329,13 @@ class LabelAwareClipLoss(nn.Module):
         # Part 2: symmetric multi-positive cross-entropy
         lp_i2t = F.log_softmax(logits, dim=1)    # log-prob over texts   for each image
         lp_t2i = F.log_softmax(logits.T, dim=1)  # log-prob over images  for each text
-        loss = (
+        clip_loss = (
             -(target * lp_i2t).sum(1).mean()   # image→text direction
             + -(target * lp_t2i).sum(1).mean() # text→image direction
         ) / 2
+
+        self._last_clip_loss = clip_loss.detach()
+        self._last_neg_loss = None
 
         # Part 3: repulsion hinge for conflicting pairs (negative_aware only)
         if self.match_mode == "negative_aware" and conflict.any():
@@ -340,9 +343,10 @@ class LabelAwareClipLoss(nn.Module):
             sim = image_features @ text_features.T          # (B, B) in [-1, 1]
             # Penalise only pairs whose sim is above the margin threshold
             neg_loss = F.relu(sim[conflict] - self.neg_margin).mean()
-            loss = loss + self.neg_weight * neg_loss
+            self._last_neg_loss = neg_loss.detach()
+            return clip_loss + self.neg_weight * neg_loss
 
-        return loss
+        return clip_loss
 
 
 # ── Sigmoid variant (SigLIP loss) ─────────────────────────────────────────────
@@ -520,12 +524,16 @@ class LabelAwareSigLipLoss(nn.Module):
         target, conflict = self._build_siglip_target(labels)
 
         # Part 2: sigmoid binary cross-entropy summed over all B² pairs, normalised by B
-        loss = -F.logsigmoid(target * logits).sum() / image_features.shape[0]
+        siglip_loss = -F.logsigmoid(target * logits).sum() / image_features.shape[0]
+
+        self._last_clip_loss = siglip_loss.detach()
+        self._last_neg_loss = None
 
         # Part 3: optional extra repulsion hinge (negative_aware only)
         if self.match_mode == "negative_aware" and conflict.any():
             sim = image_features @ text_features.T          # (B, B) in [-1, 1]
             neg_loss = F.relu(sim[conflict] - self.neg_margin).mean()
-            loss = loss + self.neg_weight * neg_loss
+            self._last_neg_loss = neg_loss.detach()
+            return siglip_loss + self.neg_weight * neg_loss
 
-        return loss
+        return siglip_loss

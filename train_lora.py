@@ -142,7 +142,7 @@ def parse_args():
     # Training
     p.add_argument("--output-dir", required=True)
     p.add_argument("--epochs", type=int, default=500)
-    p.add_argument("--batch-size", type=int, default=8,
+    p.add_argument("--batch-size", type=int, default=64,
                    help="Per-GPU batch size. Effective batch = batch-size * grad-accum-steps * world-size")
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--min-lr", type=float, default=1e-7,
@@ -291,6 +291,9 @@ def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch,
     total_loss = 0.0
     optimizer.zero_grad()
     use_labels = isinstance(loss_fn, (LabelAwareClipLoss, LabelAwareSigLipLoss))
+    is_neg_aware = use_labels and getattr(loss_fn, 'match_mode', None) == 'negative_aware'
+    total_clip_loss = 0.0
+    total_neg_loss = 0.0
 
     for step, (images, texts, labels) in enumerate(loader):
         images = images.to(device)
@@ -322,6 +325,11 @@ def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch,
                     loss = loss_fn(image_features, text_features, logit_scale, labels_dev)
                 else:
                     loss = loss_fn(image_features, text_features, logit_scale)
+            if is_neg_aware:
+                _c = getattr(loss_fn, '_last_clip_loss', None)
+                _n = getattr(loss_fn, '_last_neg_loss', None)
+                total_clip_loss += _c.item() if _c is not None else loss.item()
+                total_neg_loss += _n.item() if _n is not None else 0.0
             loss = loss / grad_accum_steps
 
         if scaler is not None:
@@ -357,7 +365,10 @@ def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch,
             if wandb is not None and wandb.run is not None:
                 wandb.log({"train/loss_step": step_loss}, step=global_step + step)
 
-    return total_loss / len(loader)
+    avg_loss = total_loss / len(loader)
+    if is_neg_aware:
+        return avg_loss, total_clip_loss / len(loader), total_neg_loss / len(loader)
+    return avg_loss, None, None
 
 
 @torch.no_grad()
@@ -366,6 +377,9 @@ def eval_one_epoch(model, loader, loss_fn, device, amp_dtype, is_siglip=False):
     raw = _raw_model(model)
     total_loss = 0.0
     use_labels = isinstance(loss_fn, (LabelAwareClipLoss, LabelAwareSigLipLoss))
+    is_neg_aware = use_labels and getattr(loss_fn, 'match_mode', None) == 'negative_aware'
+    total_clip_loss = 0.0
+    total_neg_loss = 0.0
     logit_bias = getattr(raw, "logit_bias", None) if is_siglip else None
     for images, texts, labels in loader:
         images = images.to(device)
@@ -384,8 +398,16 @@ def eval_one_epoch(model, loader, loss_fn, device, amp_dtype, is_siglip=False):
                     loss = loss_fn(image_features, text_features, logit_scale, labels.to(device))
                 else:
                     loss = loss_fn(image_features, text_features, logit_scale)
+        if is_neg_aware:
+            _c = getattr(loss_fn, '_last_clip_loss', None)
+            _n = getattr(loss_fn, '_last_neg_loss', None)
+            total_clip_loss += _c.item() if _c is not None else loss.item()
+            total_neg_loss += _n.item() if _n is not None else 0.0
         total_loss += loss.item()
-    return total_loss / len(loader)
+    avg_loss = total_loss / len(loader)
+    if is_neg_aware:
+        return avg_loss, total_clip_loss / len(loader), total_neg_loss / len(loader)
+    return avg_loss, None, None
 
 
 # ── Early stopping ────────────────────────────────────────────────────────────
@@ -638,8 +660,13 @@ def main():
     best_val_loss = float("inf")
     best_epoch = 0
     global_step = 0
+    is_neg_aware = getattr(loss_fn, 'match_mode', None) == 'negative_aware'
     train_loss_history: list[float] = []
     val_loss_history: list[float] = []
+    train_clip_loss_history: list[float] = []
+    train_neg_loss_history: list[float] = []
+    val_clip_loss_history: list[float] = []
+    val_neg_loss_history: list[float] = []
 
     def save_loss_plot():
         epochs_so_far = list(range(1, len(train_loss_history) + 1))
@@ -654,6 +681,33 @@ def main():
         fig.savefig(output_dir / "loss_curve.png", dpi=100, bbox_inches="tight")
         plt.close(fig)
 
+    def save_component_loss_plots():
+        if not train_clip_loss_history:
+            return
+        epochs_so_far = list(range(1, len(train_clip_loss_history) + 1))
+        w = args.negative_weight
+
+        fig, ax = plt.subplots()
+        ax.plot(epochs_so_far, train_clip_loss_history, label="clip loss")
+        ax.plot(epochs_so_far, [x * w for x in train_neg_loss_history], label=f"repulsion (×{w})")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Loss")
+        ax.set_title("Train loss breakdown")
+        ax.legend()
+        fig.savefig(output_dir / "train_loss_breakdown.png", dpi=100, bbox_inches="tight")
+        plt.close(fig)
+
+        if val_clip_loss_history:
+            fig, ax = plt.subplots()
+            ax.plot(epochs_so_far[:len(val_clip_loss_history)], val_clip_loss_history, label="clip loss")
+            ax.plot(epochs_so_far[:len(val_neg_loss_history)], [x * w for x in val_neg_loss_history], label=f"repulsion (×{w})")
+            ax.set_xlabel("Epoch")
+            ax.set_ylabel("Loss")
+            ax.set_title("Val loss breakdown")
+            ax.legend()
+            fig.savefig(output_dir / "val_loss_breakdown.png", dpi=100, bbox_inches="tight")
+            plt.close(fig)
+
     # ── Training loop ─────────────────────────────────────────────────────────
     if is_main:
         eff_batch = args.batch_size * args.grad_accum_steps * world_size
@@ -666,7 +720,7 @@ def main():
         if train_sampler is not None:
             train_sampler.set_epoch(epoch)  # ensures different shuffle each epoch
 
-        train_loss = train_one_epoch(
+        train_loss, train_clip_loss, train_neg_loss = train_one_epoch(
             model, train_loader, loss_fn, optimizer, scaler,
             device, epoch, amp_dtype, args.epochs,
             args.report_interval_steps, args.grad_accum_steps,
@@ -676,8 +730,10 @@ def main():
         global_step += len(train_loader)
 
         val_loss = None
+        val_clip_loss = None
+        val_neg_loss = None
         if val_loader is not None:
-            val_loss = eval_one_epoch(model, val_loader, loss_fn, device, amp_dtype, is_siglip=is_siglip)
+            val_loss, val_clip_loss, val_neg_loss = eval_one_epoch(model, val_loader, loss_fn, device, amp_dtype, is_siglip=is_siglip)
             if world_size > 1:
                 t = torch.tensor(val_loss, device=device)
                 dist.all_reduce(t)
@@ -697,7 +753,14 @@ def main():
             train_loss_history.append(train_loss)
             if val_loss is not None:
                 val_loss_history.append(val_loss)
+            if train_clip_loss is not None:
+                train_clip_loss_history.append(train_clip_loss)
+                train_neg_loss_history.append(train_neg_loss if train_neg_loss is not None else 0.0)
+            if val_clip_loss is not None:
+                val_clip_loss_history.append(val_clip_loss)
+                val_neg_loss_history.append(val_neg_loss if val_neg_loss is not None else 0.0)
             save_loss_plot()
+            save_component_loss_plots()
 
             if val_loss is not None:
                 log.info(
@@ -719,6 +782,12 @@ def main():
                 }
                 if val_loss is not None:
                     epoch_metrics["val/loss"] = val_loss
+                if train_clip_loss is not None:
+                    epoch_metrics["train/clip_loss"] = train_clip_loss
+                    epoch_metrics["train/neg_loss"] = train_neg_loss if train_neg_loss is not None else 0.0
+                if val_clip_loss is not None:
+                    epoch_metrics["val/clip_loss"] = val_clip_loss
+                    epoch_metrics["val/neg_loss"] = val_neg_loss if val_neg_loss is not None else 0.0
                 wandb.log(epoch_metrics, step=global_step)
 
             monitor_loss = val_loss if val_loss is not None else train_loss
