@@ -2,7 +2,7 @@ import pandas as pd
 
 print("Loading CSV...")
 df = pd.read_csv(
-    r"/home/tomererez/normal_near_normal/cxr_data/all_txt_data_and_labels.csv"
+    r"/home/tomererez/normal_near_normal/cxr_data/mimic_cxr_official_test.csv"
 )
 
 chexpert_cols = [col for col in df.columns if col.startswith("chexpert_")]
