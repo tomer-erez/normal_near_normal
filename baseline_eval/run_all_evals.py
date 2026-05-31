@@ -233,30 +233,57 @@ MODELS = [
     # },
 
                                     {
-        "name": "regular_clip_loss_lr1e-3",
+        "name": "fixed_negaware_005",
         "model_type": "finetuned",
         "checkpoint": None,
         "finetuned_base_model": "ViT-B-32",
         "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/regular_clip_loss_lr1e-3/final_merged.pt",
+        "finetuned_checkpoint": "experiments/fixed_negaware_005/final_merged.pt",
     },
     
-                                    {
-        "name": "negaware007lr1e-5",
+    {
+        "name": "fixed_negaware_015",
         "model_type": "finetuned",
         "checkpoint": None,
         "finetuned_base_model": "ViT-B-32",
         "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/negaware007lr1e-5/final_merged.pt",
-    },
+        "finetuned_checkpoint": "experiments/fixed_negaware_015/final_merged.pt",    
+        },
     
-                                    {
-        "name": "negaware007lr1e-3",
+    {
+        "name": "fixed_negaware_035",
         "model_type": "finetuned",
         "checkpoint": None,
         "finetuned_base_model": "ViT-B-32",
         "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/negaware007lr1e-3/final_merged.pt",
+        "finetuned_checkpoint": "experiments/fixed_negaware_035/final_merged.pt",
+    },
+
+        {
+        "name": "fixed_negaware_055",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/fixed_negaware_055/final_merged.pt",
+    },
+
+        {
+        "name": "fixed_negaware_075",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/fixed_negaware_075/final_merged.pt",
+    },
+
+        {
+        "name": "fixed_negaware_105",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/fixed_negaware_105/final_merged.pt",
     },
 ]
 

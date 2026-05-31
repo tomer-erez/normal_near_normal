@@ -1,13 +1,13 @@
 #!/bin/bash
 
-name="negaware_w08"
+name="fixed_negaware_105"
 set -e
 cd "$(dirname "$0")"
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate thesis_clip
 mkdir -p logs experiments/$name
 tmux new-session -d -s $name "
-    CUDA_VISIBLE_DEVICES=1,2 torchrun --nproc_per_node=2 --master_port=29500 train_lora.py \
+    CUDA_VISIBLE_DEVICES=3,4 torchrun --nproc_per_node=2 --master_port=29505 train_lora.py \
         --base-model ViT-B-32 \
         --pretrained openai \
         --precision bf16 \
@@ -16,7 +16,7 @@ tmux new-session -d -s $name "
         --loss clip \
         --batch-size 50 \
         --match-mode negative_aware \
-        --negative-weight 0.80 \
+        --negative-weight 1.05 \
         --negative-margin 0.0 \
         --lora-r 16 \
         --lora-alpha 16 \
