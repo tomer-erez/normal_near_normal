@@ -358,12 +358,23 @@ def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch,
         step_loss = loss.item() * grad_accum_steps
         total_loss += step_loss
         if is_main and step % report_interval_steps == 0:
-            log.info(
+            msg = (
                 f"  epoch {epoch}/{total_epochs} step {step}/{len(loader)}"
                 f"  loss={step_loss:.4f}"
             )
+            step_log = {"train/loss_step": step_loss}
+            if is_neg_aware:
+                _sc = getattr(loss_fn, '_last_clip_loss', None)
+                _sn = getattr(loss_fn, '_last_neg_loss', None)
+                if _sc is not None:
+                    _sc_val = _sc.item()
+                    _sn_val = _sn.item() if _sn is not None else 0.0
+                    msg += f"  clip={_sc_val:.4f}  repulsion={_sn_val:.4f}"
+                    step_log["train/clip_loss_step"] = _sc_val
+                    step_log["train/neg_loss_step"] = _sn_val
+            log.info(msg)
             if wandb is not None and wandb.run is not None:
-                wandb.log({"train/loss_step": step_loss}, step=global_step + step)
+                wandb.log(step_log, step=global_step + step)
 
     avg_loss = total_loss / len(loader)
     if is_neg_aware:
@@ -762,14 +773,20 @@ def main():
             save_loss_plot()
             save_component_loss_plots()
 
+            neg_suffix = ""
+            if is_neg_aware and train_clip_loss is not None:
+                neg_suffix = f"  [clip={train_clip_loss:.4f}  rep={train_neg_loss:.4f}]"
             if val_loss is not None:
+                val_neg_suffix = ""
+                if is_neg_aware and val_clip_loss is not None:
+                    val_neg_suffix = f"  [clip={val_clip_loss:.4f}  rep={val_neg_loss:.4f}]"
                 log.info(
                     f"Epoch {epoch}/{args.epochs} — "
-                    f"train={train_loss:.4f}  val={val_loss:.4f}  lr={current_lr:.2e}"
+                    f"train={train_loss:.4f}{neg_suffix}  val={val_loss:.4f}{val_neg_suffix}  lr={current_lr:.2e}"
                 )
             else:
                 log.info(
-                    f"Epoch {epoch}/{args.epochs} — train={train_loss:.4f}  lr={current_lr:.2e}"
+                    f"Epoch {epoch}/{args.epochs} — train={train_loss:.4f}{neg_suffix}  lr={current_lr:.2e}"
                 )
 
             if wandb is not None and wandb.run is not None:

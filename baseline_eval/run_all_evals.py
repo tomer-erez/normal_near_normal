@@ -99,14 +99,14 @@ MODELS = [
         "finetuned_pretrained": "",
         "finetuned_checkpoint": "experiments/_vanilla_bsz16x8/final_merged.pt",
     },
-        {
-        "name": "vanilla_siglip_loss",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/_vanilla_bsz16x8_with_siglip/final_merged.pt",
-    },
+    #     {
+    #     "name": "vanilla_siglip_loss",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/_vanilla_bsz16x8_with_siglip/final_merged.pt",
+    # },
     #         {
     #     "name": "ft_swint_siglip_loss",
     #     "model_type": "finetuned",
@@ -124,14 +124,14 @@ MODELS = [
     #     "finetuned_checkpoint": "experiments/fine_tuned_cxr_and_cliploss/final_merged.pt",
     # },
 
-        {
-        "name": "negawareclip_01",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/negawareclip_01/final_merged.pt",
-    },
+    #     {
+    #     "name": "negawareclip_01",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/negawareclip_01/final_merged.pt",
+    # },
 
     #         {
     #     "name": "negawareclip_05",
@@ -178,14 +178,14 @@ MODELS = [
     #     "finetuned_checkpoint": "experiments/r32a64/final_merged.pt",
     # },
 
-                    {
-        "name": "r64a64",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/r64a64/final_merged.pt",
-    },
+    #                 {
+    #     "name": "r64a64",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/r64a64/final_merged.pt",
+    # },
 
     #                     {
     #     "name": "r100a100",
@@ -196,40 +196,67 @@ MODELS = [
     #     "finetuned_checkpoint": "experiments/r100a100/final_merged.pt",
     # },
 
-                        {
-        "name": "vit_l_14",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-L-14",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/vit_l_14/final_merged.pt",
-    },
+    #                     {
+    #     "name": "vit_l_14",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-L-14",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/vit_l_14/final_merged.pt",
+    # },
 
-                            {
-        "name": "vitb32_cliploss_negaware_bs32_no_conflict_zeriong_version",
+    #                         {
+    #     "name": "vitb32_cliploss_negaware_bs32_no_conflict_zeriong_version",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/vitb32_cliploss_negaware_bs32_no_conflict_zeriong_version/final_merged.pt",
+    # },
+
+    #                         {
+    #     "name": "vitb32_sigliploss_negaware_bs32_no_conflict_zeriong_version",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/vitb32_sigliploss_negaware_bs32_no_conflict_zeriong_version/final_merged.pt",
+    # },
+
+    #                             {
+    #     "name": "mode_ignore_nan_negaware",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/vitb32_cliploss_negaware_nanmode_ignore/final_merged.pt",
+    # },
+
+                                    {
+        "name": "regular_clip_loss_lr1e-3",
         "model_type": "finetuned",
         "checkpoint": None,
         "finetuned_base_model": "ViT-B-32",
         "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/vitb32_cliploss_negaware_bs32_no_conflict_zeriong_version/final_merged.pt",
+        "finetuned_checkpoint": "experiments/regular_clip_loss_lr1e-3/final_merged.pt",
     },
-
-                            {
-        "name": "vitb32_sigliploss_negaware_bs32_no_conflict_zeriong_version",
+    
+                                    {
+        "name": "negaware007lr1e-5",
         "model_type": "finetuned",
         "checkpoint": None,
         "finetuned_base_model": "ViT-B-32",
         "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/vitb32_sigliploss_negaware_bs32_no_conflict_zeriong_version/final_merged.pt",
+        "finetuned_checkpoint": "experiments/negaware007lr1e-5/final_merged.pt",
     },
-
-                                {
-        "name": "mode_ignore_nan_negaware",
+    
+                                    {
+        "name": "negaware007lr1e-3",
         "model_type": "finetuned",
         "checkpoint": None,
         "finetuned_base_model": "ViT-B-32",
         "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/vitb32_cliploss_negaware_nanmode_ignore/final_merged.pt",
+        "finetuned_checkpoint": "experiments/negaware007lr1e-3/final_merged.pt",
     },
 ]
 

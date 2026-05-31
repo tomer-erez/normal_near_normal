@@ -338,11 +338,12 @@ class LabelAwareClipLoss(nn.Module):
         self._last_neg_loss = None
 
         # Part 3: repulsion hinge for conflicting pairs (negative_aware only)
+        # Uses scaled logits (not raw cosine sim) so the hinge gradient is
+        # ~logit_scale× larger and comparable to the CLIP loss gradient.
+        # neg_margin is now in logit space; 0.0 still means "penalise any
+        # positive logit between conflicting pairs".
         if self.match_mode == "negative_aware" and conflict.any():
-            # Raw cosine similarities (unscaled) for hinge comparison
-            sim = image_features @ text_features.T          # (B, B) in [-1, 1]
-            # Penalise only pairs whose sim is above the margin threshold
-            neg_loss = F.relu(sim[conflict] - self.neg_margin).mean()
+            neg_loss = F.relu(logits[conflict] - self.neg_margin).mean()
             self._last_neg_loss = neg_loss.detach()
             return clip_loss + self.neg_weight * neg_loss
 
@@ -530,9 +531,9 @@ class LabelAwareSigLipLoss(nn.Module):
         self._last_neg_loss = None
 
         # Part 3: optional extra repulsion hinge (negative_aware only)
+        # Uses scaled logits so gradient magnitude matches the siglip loss term.
         if self.match_mode == "negative_aware" and conflict.any():
-            sim = image_features @ text_features.T          # (B, B) in [-1, 1]
-            neg_loss = F.relu(sim[conflict] - self.neg_margin).mean()
+            neg_loss = F.relu(logits[conflict] - self.neg_margin).mean()
             self._last_neg_loss = neg_loss.detach()
             return siglip_loss + self.neg_weight * neg_loss
 
