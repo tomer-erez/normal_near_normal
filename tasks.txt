@@ -1,0 +1,7 @@
+finalize and decide our best model
+add more query types?
+
+
+for paper:
+say we are model in single , pair, and negation?
+explain that we are doing yes a and not b as the negation
