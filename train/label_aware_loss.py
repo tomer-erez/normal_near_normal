@@ -192,8 +192,11 @@ class LabelAwareClipLoss(nn.Module):
         positive = shared_pos >= self._pos_threshold         # (B, B) bool
         positive.fill_diagonal_(True)
 
-        # Step 4: conflict detection — any label where one has 1 and other has -1
+        # Step 4: conflict detection — any label where one has 1 and other has -1,
+        # but only for pairs that do NOT already share a positive label.
+        # If two samples share a positive, attraction wins and we don't also repel.
         conflict = ((pos @ neg.T) + (neg @ pos.T)) > 0      # (B, B) bool
+        conflict = conflict & ~positive
         conflict.fill_diagonal_(False)
 
         # Step 5: build target and normalise rows to sum=1.
@@ -431,6 +434,7 @@ class LabelAwareSigLipLoss(nn.Module):
         positive.fill_diagonal_(True)
 
         conflict = ((pos @ neg.T) + (neg @ pos.T)) > 0
+        conflict = conflict & ~positive
         conflict.fill_diagonal_(False)
 
         # +1 for shared-label pairs, −1 for everything else.

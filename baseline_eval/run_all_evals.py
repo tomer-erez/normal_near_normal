@@ -196,14 +196,14 @@ MODELS = [
     #     "finetuned_checkpoint": "experiments/r100a100/final_merged.pt",
     # },
 
-    #                     {
-    #     "name": "vit_l_14",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-L-14",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/vit_l_14/final_merged.pt",
-    # },
+                        {
+        "name": "vit_l_14",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-L-14",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/vit_l_14/final_merged.pt",
+    },
 
     #                         {
     #     "name": "vitb32_cliploss_negaware_bs32_no_conflict_zeriong_version",

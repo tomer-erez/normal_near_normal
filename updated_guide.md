@@ -106,11 +106,13 @@ Controls which (image, text) pairs count as positives in the loss. Standard CLIP
 | `two_label` | Share ≥2 positive labels | Pair with `--caption-mode pair` |
 | `negative_aware` | `single_label` + hinge repulsion for conflict pairs | Use large batch; no grad accum |
 
-**Conflict pair** = one sample has label=1, the other has label=0/NaN for the same pathology.
+**Conflict pair** = one sample has label=1, the other has label=0/NaN for the same pathology, **and they share no confirmed positive labels**. If two samples share a positive label, attraction wins regardless of any contradictions on other labels — they are not flagged as conflicts.
 
 Extra flags for `negative_aware`:
-- `--negative-weight λ` (default `0.5`) — repulsion strength
-- `--negative-margin τ` (default `0.0`) — cosine-sim threshold below which repulsion is skipped
+- `--negative-weight λ` (default `0.5`) — repulsion strength relative to the contrastive loss
+- `--negative-margin τ` (default `0.0`) — **logit-space** threshold; pairs with `logit_scale × cosine_sim < τ` are not penalised. `0.0` means any conflicting pair with a positive logit is penalised. Use negative values (e.g. `-20`) to demand stronger separation.
+
+> **Important:** the repulsion hinge operates in logit space (`logit_scale × cosine_sim`, range ≈ ±100), not raw cosine space. This keeps the repulsion gradient on the same scale as the CLIP/SigLIP gradient. `--negative-weight 0.5` means roughly 50% of the gradient comes from repulsion.
 
 **Diagnostics** logged at step 0 of each epoch (label-aware modes):
 
@@ -118,7 +120,7 @@ Extra flags for `negative_aware`:
 |------|--------------|----------------------|
 | `avg_positives_per_sample` | > 2.0 | Increase `--batch-size` or switch to `single_label` |
 | `diagonal_only` | < 20% | Same as above |
-| `conflict_pairs` | 5–15% | Only meaningful for `negative_aware` |
+| `conflict_pairs` | 1–10% with `--nan-mode ignore` | > 10% usually means NaN pollution; switch to `--nan-mode ignore` |
 
 > **Important:** label-aware modes mine positives from the **live batch**. `--grad-accum-steps` does NOT help — batches across accumulation steps never see each other's labels. Increase `--batch-size` directly.
 
@@ -133,17 +135,20 @@ Extra flags for `negative_aware`:
 
 **Which to use:**
 - `clip` produces better-separated embedding spaces for ranking tasks (P@K metrics) because the softmax forces each sample to rank its positives above *all* in-batch negatives simultaneously.
-- `siglip` gives stronger repulsion for conflict pairs — conflicting pairs get target=−1 in the main loss itself, plus an optional hinge on top. Better if negative queries are the primary goal.
+- `siglip` gives stronger repulsion for conflict pairs — conflicting pairs get target=−1 in the main loss itself, with no separate hinge needed. Better if negative queries are the primary goal.
+
+**SigLIP + `single_label`**: conflict pairs automatically receive target=−1 and are repelled without any hinge. `--negative-weight` and `--negative-margin` are not needed and can be omitted.
+
+**SigLIP + `negative_aware`**: adds an optional hinge on top of the −1 targets. Since SigLIP already repels, keep λ small.
 
 `--negative-weight` tuning for `negative_aware`:
 
 | λ | Behaviour |
 |---|-----------|
-| `0.25` | Conservative — use if training is unstable |
-| `0.5` | Default balanced |
+| `0.1` | Very conservative |
+| `0.25` | Conservative — use with SigLIP (main loss already repels) |
+| `0.5` | Default balanced — use with CLIP |
 | `1.0` | Aggressive repulsion |
-
-With SigLIP, prefer `--negative-weight 0.25` since the main loss already repels conflicts.
 
 ---
 
@@ -159,6 +164,8 @@ Controls how labels that are *not mentioned* (NaN in the CSV) are encoded during
 Use `--nan-mode ignore` when:
 - You want only *explicitly ruled-out* labels to define negatives (stricter standard).
 - You are training `negative_aware` and want to suppress spurious conflicts from NaN-labelled images.
+
+> **Recommended default for `negative_aware`:** always pair with `--nan-mode ignore`. Under `--nan-mode negative`, ~78% of off-diagonal pairs are flagged as conflicts (mostly NaN-derived, not genuine contradictions), drowning out the meaningful repulsion signal.
 
 ---
 
@@ -180,9 +187,9 @@ Use `--nan-mode ignore` when:
 | A — Vanilla CLIP baseline | `--match-mode standard --loss clip` | Baseline |
 | B — Soft positives | `--match-mode single_label` | Better single/pair retrieval |
 | C — Strict positives | `--match-mode two_label --caption-mode pair` | Pair queries |
-| D — Negative-aware CLIP | `--match-mode negative_aware --negative-weight 0.5` | Negative queries |
-| E — SigLIP label-aware | `--loss siglip --match-mode single_label` | General, small batch |
-| F — SigLIP + negative-aware | `--loss siglip --match-mode negative_aware --negative-weight 0.25` | Strongest negative repulsion |
+| D — Negative-aware CLIP | `--match-mode negative_aware --negative-weight 0.5 --nan-mode ignore` | Negative queries |
+| E — SigLIP label-aware | `--loss siglip --match-mode single_label --nan-mode ignore` | General, implicit repulsion |
+| F — SigLIP + negative-aware | `--loss siglip --match-mode negative_aware --negative-weight 0.25 --nan-mode ignore` | Strongest negative repulsion |
 
 ---
 
@@ -210,25 +217,27 @@ python train_lora.py --base-model ViT-B-32 --pretrained openai \
 ```bash
 python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode negative_aware --negative-weight 0.5 --negative-margin 0.0 \
-    --loss clip --batch-size 128
+    --loss clip --batch-size 128 --nan-mode ignore
 ```
 
-> Use a large `--batch-size` to get enough conflict pairs per batch. Do not use `--grad-accum-steps > 1` or multi-GPU — conflict signal is local to the batch.
+> Use `--nan-mode ignore` to limit conflict detection to explicit label contradictions (CSV 1 vs CSV 0), not NaN-derived ones. Use a large `--batch-size` to get enough conflict pairs per batch. Do not use `--grad-accum-steps > 1` — conflict signal is local to the batch.
 
-### Idea 5 — SigLIP loss
+### Idea 5 — SigLIP loss (recommended)
 ```bash
 python train_lora.py --base-model ViT-B-32 --pretrained openai \
-    --match-mode single_label --loss siglip
+    --match-mode single_label --loss siglip --nan-mode ignore --batch-size 128
 ```
 
-### Idea 6 — SigLIP + negative-aware (strongest repulsion)
+> Conflict pairs automatically receive target=−1 in the SigLIP loss, providing repulsion with no hinge term needed. The cleanest approach for attraction + repulsion together.
+
+### Idea 6 — SigLIP + negative-aware (extra emphasis on conflicts)
 ```bash
 python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --loss siglip --match-mode negative_aware \
-    --negative-weight 0.25 --negative-margin 0.0 --batch-size 128
+    --negative-weight 0.25 --negative-margin 0.0 --batch-size 128 --nan-mode ignore
 ```
 
-> SigLIP already repels conflict pairs via target=−1; lower `--negative-weight` accordingly.
+> SigLIP already repels conflict pairs via target=−1; the hinge adds extra emphasis. Keep `--negative-weight` low (0.1–0.25).
 
 ### Idea 7 — Frozen CXR-CLIP image encoder + fine-tuned text encoder
 ```bash
@@ -259,7 +268,7 @@ python train_lora.py \
 |---|------|---------|
 | 9 | LoRA encoder target (image / text / both) | `--lora-target` |
 | 10 | LoRA rank ablation | `--lora-r`, `--lora-alpha` |
-| 11 | Repulsion strength (λ and τ) | `--negative-weight`, `--negative-margin` |
+| 11 | Repulsion strength (λ and τ in logit space) | `--negative-weight`, `--negative-margin` |
 | 12 | Batch size effect on label-aware mining | `--batch-size` |
 | 13 | Caption mode ablation (single / pair / both / all) | `--caption-mode` |
 | 14 | Negative caption training ("label A and no label B") | `--caption-mode negative` |
@@ -271,12 +280,15 @@ python train_lora.py \
 After each training run, check the per-epoch log line:
 ```
 [batch stats] avg_positives_per_sample=X.XX  diagonal_only=Y.Y%  conflict_pairs=Z.Z%
+Epoch N/M — train=X.XXXX  [clip=X.XXXX  rep=X.XXXX]  val=X.XXXX  lr=X.XXe-XX
 ```
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `avg_positives_per_sample ~= 1.0` | Batch too small or mode too strict | Increase `--batch-size` or switch to `single_label` |
 | `diagonal_only > 20%` | Same as above | Same fix |
+| `conflict_pairs > 20%` | NaN labels polluting conflict detection | Switch to `--nan-mode ignore` |
 | `conflict_pairs < 1%` | Conflicting labels rare in batch | `negative_aware` hinge has little effect |
+| `rep ~= 0` with `negative_aware` | All conflict pairs already separated below margin | Lower `--negative-margin` (e.g. `-20`) |
 | `val_loss` rises, `train_loss` falls | Overfitting | Reduce `--lr`, `--lora-r`, or add `--lora-dropout 0.1` |
 | `val_loss` plateaus quickly | LR too high or rank too low | Tune `--lr` and `--lora-r` |
