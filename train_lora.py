@@ -165,7 +165,7 @@ def parse_args():
                    help="Early stopping patience in epochs (0 to disable)")
     # Label-aware loss
     p.add_argument("--match-mode", default="standard",
-                   choices=["standard", "single_label", "two_label", "negative_aware"],
+                   choices=["standard", "single_label", "two_label", "negative_aware", "graded"],
                    help="How to define positive pairs in the batch. "
                         "'standard': diagonal (vanilla CLIP). "
                         "'single_label': share ≥1 positive label. "

@@ -42,23 +42,9 @@ log = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).parent.parent
 CXRCLIP_DIR = REPO_ROOT / "cxr-clip"
+sys.path.insert(0, str(REPO_ROOT))
 
-CHEXPERT_LABELS = [
-    "Atelectasis",
-    "Cardiomegaly",
-    "Consolidation",
-    "Edema",
-    "Enlarged Cardiomediastinum",
-    "Fracture",
-    "Lung Lesion",
-    "Lung Opacity",
-    "No Finding",
-    "Pleural Effusion",
-    "Pleural Other",
-    "Pneumonia",
-    "Pneumothorax",
-]
-LABEL_COLS = [f"chexpert_{l}" for l in CHEXPERT_LABELS]
+from constants import CHEXPERT_LABELS, LABEL_COLS
 
 
 # ── Dataset ───────────────────────────────────────────────────────────────────

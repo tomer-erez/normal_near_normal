@@ -101,12 +101,13 @@ class LabelAwareClipLoss(nn.Module):
         neg_margin: float = 0.0,
     ):
         super().__init__()
-        assert match_mode in ("single_label", "two_label", "negative_aware"), match_mode
+        assert match_mode in ("single_label", "two_label", "negative_aware", "graded"), match_mode
         self.match_mode = match_mode
         self.neg_weight = neg_weight
         self.neg_margin = neg_margin
         # How many shared POSITIVE labels are required for a pair to count as positive.
         # two_label requires ≥2; everything else (single_label, negative_aware) requires ≥1.
+        # graded does not use a threshold — it uses raw shared counts as soft weights.
         self._pos_threshold = 2 if match_mode == "two_label" else 1
 
     # ------------------------------------------------------------------
@@ -187,6 +188,21 @@ class LabelAwareClipLoss(nn.Module):
 
         # Step 2: count of shared positive labels between every pair (i, j)
         shared_pos = (pos @ pos.T).long()                    # (B, B)
+
+        if self.match_mode == "graded":
+            # Graded: soft target weight proportional to number of shared positive labels.
+            # Pairs sharing 2 labels attract more strongly than pairs sharing 1.
+            # Diagonal is clamped to ≥1 to keep the identity pairing for label-free samples.
+            target = shared_pos.float()
+            B = labels.shape[0]
+            diag_idx = torch.arange(B, device=labels.device)
+            target[diag_idx, diag_idx] = target[diag_idx, diag_idx].clamp(min=1.0)
+            # Conflict: pairs with no shared positives but at least one contradiction
+            conflict = ((pos @ neg.T) + (neg @ pos.T)) > 0
+            conflict = conflict & (shared_pos == 0)
+            conflict.fill_diagonal_(False)
+            row_sums = target.sum(dim=1, keepdim=True).clamp(min=1.0)
+            return target / row_sums, conflict
 
         # Step 3: threshold → boolean positive matrix; self is always positive
         positive = shared_pos >= self._pos_threshold         # (B, B) bool
@@ -396,7 +412,7 @@ class LabelAwareSigLipLoss(nn.Module):
         neg_margin: float = 0.0,
     ):
         super().__init__()
-        assert match_mode in ("single_label", "two_label", "negative_aware"), match_mode
+        assert match_mode in ("single_label", "two_label", "negative_aware", "graded"), match_mode
         self.match_mode = match_mode
         self.neg_weight = neg_weight
         self.neg_margin = neg_margin
@@ -430,6 +446,22 @@ class LabelAwareSigLipLoss(nn.Module):
         neg = (labels == -1.0).float()
 
         shared_pos = (pos @ pos.T).long()
+
+        if self.match_mode == "graded":
+            # Graded: soft target in [0, 1] proportional to shared label count.
+            # Row-normalised so the strongest match in each row gets the largest weight.
+            # Uses soft BCE in forward() instead of the ±1 SigLIP formula.
+            target = shared_pos.float()
+            B = labels.shape[0]
+            diag_idx = torch.arange(B, device=labels.device)
+            target[diag_idx, diag_idx] = target[diag_idx, diag_idx].clamp(min=1.0)
+            row_sums = target.sum(dim=1, keepdim=True).clamp(min=1.0)
+            target = target / row_sums  # [0, 1]
+            conflict = ((pos @ neg.T) + (neg @ pos.T)) > 0
+            conflict = conflict & (shared_pos == 0)
+            conflict.fill_diagonal_(False)
+            return target, conflict
+
         positive = shared_pos >= self._pos_threshold
         positive.fill_diagonal_(True)
 
@@ -525,11 +557,19 @@ class LabelAwareSigLipLoss(nn.Module):
         if logit_bias is not None:
             logits = logits + logit_bias
 
-        # Build ±1 target and conflict mask
+        # Build target and conflict mask
         target, conflict = self._build_siglip_target(labels)
 
-        # Part 2: sigmoid binary cross-entropy summed over all B² pairs, normalised by B
-        siglip_loss = -F.logsigmoid(target * logits).sum() / image_features.shape[0]
+        # Part 2: loss over all B² pairs, normalised by B.
+        # Graded mode: target ∈ [0,1] → soft BCE: -(t·log σ(l) + (1-t)·log σ(-l))
+        # Other modes: target ∈ {-1,+1} → standard SigLIP: -log σ(t·l)
+        B = image_features.shape[0]
+        if self.match_mode == "graded":
+            siglip_loss = -(
+                target * F.logsigmoid(logits) + (1 - target) * F.logsigmoid(-logits)
+            ).sum() / B
+        else:
+            siglip_loss = -F.logsigmoid(target * logits).sum() / B
 
         self._last_clip_loss = siglip_loss.detach()
         self._last_neg_loss = None

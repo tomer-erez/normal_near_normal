@@ -102,9 +102,12 @@ Controls which (image, text) pairs count as positives in the loss. Standard CLIP
 | Mode | Positives | Notes |
 |------|-----------|-------|
 | `standard` | Diagonal only | Uses distributed all-gather; works with any batch size |
-| `single_label` | Share ≥1 positive label | Soft target matrix |
+| `single_label` | Share ≥1 positive label | Soft target matrix; binary (0 or 1/N per pair) |
 | `two_label` | Share ≥2 positive labels | Pair with `--caption-mode pair` |
 | `negative_aware` | `single_label` + hinge repulsion for conflict pairs | Use large batch; no grad accum |
+| `graded` ⭐ | Soft target proportional to number of shared labels | **Best for optimising all three query types simultaneously** |
+
+**`graded` mode** weights attraction by the count of shared positive labels: a pair sharing 2 labels attracts twice as strongly as a pair sharing 1. This teaches the model to distinguish "has both A and B" from "has just A", which is exactly what pair queries need — without sacrificing single or negative query performance. Works with both `--loss clip` and `--loss siglip`. Pair with `--caption-mode all --nan-mode ignore`.
 
 **Conflict pair** = one sample has label=1, the other has label=0/NaN for the same pathology, **and they share no confirmed positive labels**. If two samples share a positive label, attraction wins regardless of any contradictions on other labels — they are not flagged as conflicts.
 
@@ -190,6 +193,7 @@ Use `--nan-mode ignore` when:
 | D — Negative-aware CLIP | `--match-mode negative_aware --negative-weight 0.5 --nan-mode ignore` | Negative queries |
 | E — SigLIP label-aware | `--loss siglip --match-mode single_label --nan-mode ignore` | General, implicit repulsion |
 | F — SigLIP + negative-aware | `--loss siglip --match-mode negative_aware --negative-weight 0.25 --nan-mode ignore` | Strongest negative repulsion |
+| G — Graded CLIP ⭐ | `--loss clip --match-mode graded --caption-mode all --nan-mode ignore --batch-size 128` | **Best single model for all three query types** |
 
 ---
 
@@ -222,13 +226,22 @@ python train_lora.py --base-model ViT-B-32 --pretrained openai \
 
 > Use `--nan-mode ignore` to limit conflict detection to explicit label contradictions (CSV 1 vs CSV 0), not NaN-derived ones. Use a large `--batch-size` to get enough conflict pairs per batch. Do not use `--grad-accum-steps > 1` — conflict signal is local to the batch.
 
-### Idea 5 — SigLIP loss (recommended)
+### Idea 5 — Graded SigLIP (recommended — best for all three query types) ⭐
+```bash
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --match-mode graded --loss siglip \
+    --caption-mode all --nan-mode ignore --batch-size 128
+```
+
+> Graded soft targets weight attraction proportionally to the number of shared positive labels — pairs sharing 2 labels attract twice as strongly as pairs sharing 1. SigLIP's soft BCE handles both attraction and repulsion cleanly. `--caption-mode all` ensures the model sees all three query formats during training. Use a large batch (≥128) so graded weights have enough diversity to be meaningful.
+
+### Idea 6 — SigLIP + single_label (simpler baseline)
 ```bash
 python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode single_label --loss siglip --nan-mode ignore --batch-size 128
 ```
 
-> Conflict pairs automatically receive target=−1 in the SigLIP loss, providing repulsion with no hinge term needed. The cleanest approach for attraction + repulsion together.
+> Conflict pairs automatically receive target=−1 in the SigLIP loss, providing repulsion with no hinge term needed. Simpler than graded but doesn't distinguish "shares 1 label" from "shares 2 labels" — pair query performance will be weaker.
 
 ### Idea 6 — SigLIP + negative-aware (extra emphasis on conflicts)
 ```bash
@@ -266,12 +279,12 @@ python train_lora.py \
 
 | # | What | Key flag |
 |---|------|---------|
-| 9 | LoRA encoder target (image / text / both) | `--lora-target` |
-| 10 | LoRA rank ablation | `--lora-r`, `--lora-alpha` |
-| 11 | Repulsion strength (λ and τ in logit space) | `--negative-weight`, `--negative-margin` |
-| 12 | Batch size effect on label-aware mining | `--batch-size` |
-| 13 | Caption mode ablation (single / pair / both / all) | `--caption-mode` |
-| 14 | Negative caption training ("label A and no label B") | `--caption-mode negative` |
+| 10 | LoRA encoder target (image / text / both) | `--lora-target` |
+| 11 | LoRA rank ablation | `--lora-r`, `--lora-alpha` |
+| 12 | Repulsion strength (λ and τ in logit space) | `--negative-weight`, `--negative-margin` |
+| 13 | Batch size effect on label-aware mining | `--batch-size` |
+| 14 | Caption mode ablation (single / pair / both / all) | `--caption-mode` |
+| 15 | Graded vs single_label vs two_label — pair query ablation | `--match-mode` |
 
 ---
 

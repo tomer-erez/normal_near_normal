@@ -15,22 +15,7 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
-CHEXPERT_LABELS = [
-    "Atelectasis",
-    "Cardiomegaly",
-    "Consolidation",
-    "Edema",
-    "Enlarged Cardiomediastinum",
-    "Fracture",
-    "Lung Lesion",
-    "Lung Opacity",
-    "No Finding",
-    "Pleural Effusion",
-    "Pleural Other",
-    "Pneumonia",
-    "Pneumothorax",
-]
-LABEL_COLS = [f"chexpert_{l}" for l in CHEXPERT_LABELS]
+from constants import CHEXPERT_LABELS, LABEL_COLS
 
 
 def _resolve_image_path(row, image_dir: Path) -> Path:

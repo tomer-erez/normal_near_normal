@@ -8,4 +8,27 @@ say we are model in single , pair, and negation?
 
 explain that we are doing yes a and not b as the negation
 
-citations
+citations: make sure you cite correctly
+
+the benchmark part is ok, the question is about methods now,
+i think we need to show some methods in the paper like hard negative mining, specific loss design etc
+
+reoport the recall only for rare query with low number of relevnt items, otherwise the recall is not a good metric for evaluation, 
+
+create more queries and query types
+
+run the biomedical model again!
+
+using a good medical image encoder with a regular clip text encoder?
+
+summary of graded vs single model as the match mode. use caption mode all or not?
+
+ablation: nans as nans vs nans as negatives!
+
+add statistics of label frequncy in the dataset to the paper?
+
+important experiments left to run:
+- graded vs single match mode
+- find a biomedical model vs the clip cxr we have vs the clip that we train
+- ignore nans or treat as negatives?
+- create more query types?  more complex?

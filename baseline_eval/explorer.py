@@ -39,12 +39,7 @@ from eval_model import (  # noqa: E402
     _normalize,
 )
 
-CHEXPERT_LABELS = [
-    "Atelectasis", "Cardiomegaly", "Consolidation", "Edema",
-    "Enlarged Cardiomediastinum", "Fracture", "Lung Lesion", "Lung Opacity",
-    "No Finding", "Pleural Effusion", "Pleural Other", "Pneumonia", "Pneumothorax",
-]
-LABEL_COLS = [f"chexpert_{l}" for l in CHEXPERT_LABELS]
+from constants import CHEXPERT_LABELS, LABEL_COLS
 
 # Each entry maps a .npy filename prefix to how to build its text encoder.
 # "emb_key" must match the stem of the .npy file in emb_dir.
