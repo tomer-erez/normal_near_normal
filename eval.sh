@@ -1,6 +1,6 @@
 #!/bin/bash
 
-name="all_relevant_models"
+name="graded_vs_not"
 set -e
 cd "$(dirname "$0")"
 source ~/miniconda3/etc/profile.d/conda.sh
