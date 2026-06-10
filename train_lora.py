@@ -67,7 +67,7 @@ import open_clip
 from open_clip.loss import ClipLoss, SigLipLoss
 
 from train.cxr_label_dataset import CXRLabelDataset
-from train.label_aware_loss import LabelAwareClipLoss, LabelAwareSigLipLoss
+from train.label_aware_loss import LabelAwareClipLoss, LabelAwareSigLipLoss, ImagePairAwareLoss
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -165,18 +165,25 @@ def parse_args():
                    help="Early stopping patience in epochs (0 to disable)")
     # Label-aware loss
     p.add_argument("--match-mode", default="standard",
-                   choices=["standard", "single_label", "two_label", "negative_aware", "graded"],
+                   choices=["standard", "single_label", "two_label", "negative_aware", "graded", "image_pair"],
                    help="How to define positive pairs in the batch. "
                         "'standard': diagonal (vanilla CLIP). "
                         "'single_label': share ≥1 positive label. "
                         "'two_label': share ≥2 positive labels. "
                         "'negative_aware': single_label + repulsion for conflicting pairs. "
+                        "'image_pair': SigLIP diagonal + image-image attraction/repulsion (recommended). "
                         "See training_guide.txt for details.")
     p.add_argument("--negative-weight", type=float, default=0.25,
                    help="Weight for the repulsion loss term (negative_aware mode only).")
     p.add_argument("--negative-margin", type=float, default=0.0,
                    help="Cosine-sim margin for repulsion: pairs with sim < margin are not penalised "
                         "(negative_aware mode only).")
+    p.add_argument("--attract-weight", type=float, default=0.1,
+                   help="Weight for the image-image attraction term (image_pair mode only).")
+    p.add_argument("--repel-weight", type=float, default=0.1,
+                   help="Weight for the image-image repulsion term (image_pair mode only).")
+    p.add_argument("--repel-margin", type=float, default=0.0,
+                   help="Cosine-sim margin for image-image repulsion hinge (image_pair mode only).")
     # Loss variant
     p.add_argument("--loss", default="clip", choices=["clip", "siglip"],
                    help="Loss function. "
@@ -290,10 +297,13 @@ def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch,
     raw = _raw_model(model)
     total_loss = 0.0
     optimizer.zero_grad()
-    use_labels = isinstance(loss_fn, (LabelAwareClipLoss, LabelAwareSigLipLoss))
+    use_labels = isinstance(loss_fn, (LabelAwareClipLoss, LabelAwareSigLipLoss, ImagePairAwareLoss))
     is_neg_aware = use_labels and getattr(loss_fn, 'match_mode', None) == 'negative_aware'
+    is_image_pair = isinstance(loss_fn, ImagePairAwareLoss)
     total_clip_loss = 0.0
     total_neg_loss = 0.0
+    total_attract_loss = 0.0
+    total_repel_loss = 0.0
 
     for step, (images, texts, labels) in enumerate(loader):
         images = images.to(device)
@@ -303,11 +313,14 @@ def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch,
         # Log batch-level pairing stats once per epoch so training signal is visible
         if is_main and step == 0 and use_labels:
             stats = loss_fn.batch_stats(labels_dev)
-            log.info(
+            stat_msg = (
                 f"  [batch stats] avg_positives_per_sample={stats['avg_positives_per_sample']:.2f}"
                 f"  diagonal_only={stats['pct_diagonal_only']:.1f}%"
                 f"  conflict_pairs={stats['pct_conflict_pairs']:.1f}%"
             )
+            if is_image_pair:
+                stat_msg += f"  attract_pairs={stats.get('pct_attract_pairs', 0):.1f}%"
+            log.info(stat_msg)
 
         with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=(amp_dtype is not None)):
             image_features = raw.encode_image(images, normalize=True)
@@ -330,6 +343,13 @@ def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch,
                 _n = getattr(loss_fn, '_last_neg_loss', None)
                 total_clip_loss += _c.item() if _c is not None else loss.item()
                 total_neg_loss += _n.item() if _n is not None else 0.0
+            elif is_image_pair:
+                _c = getattr(loss_fn, '_last_clip_loss', None)
+                _a = getattr(loss_fn, '_last_attract_loss', None)
+                _r = getattr(loss_fn, '_last_repel_loss', None)
+                total_clip_loss += _c.item() if _c is not None else loss.item()
+                total_attract_loss += _a.item() if _a is not None else 0.0
+                total_repel_loss += _r.item() if _r is not None else 0.0
             loss = loss / grad_accum_steps
 
         if scaler is not None:
@@ -372,14 +392,29 @@ def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch,
                     msg += f"  clip={_sc_val:.4f}  repulsion={_sn_val:.4f}"
                     step_log["train/clip_loss_step"] = _sc_val
                     step_log["train/neg_loss_step"] = _sn_val
+            elif is_image_pair:
+                _sc = getattr(loss_fn, '_last_clip_loss', None)
+                _sa = getattr(loss_fn, '_last_attract_loss', None)
+                _sr = getattr(loss_fn, '_last_repel_loss', None)
+                if _sc is not None:
+                    _sc_val = _sc.item()
+                    _sa_val = _sa.item() if _sa is not None else 0.0
+                    _sr_val = _sr.item() if _sr is not None else 0.0
+                    msg += f"  clip={_sc_val:.4f}  attract={_sa_val:.4f}  repel={_sr_val:.4f}"
+                    step_log["train/clip_loss_step"] = _sc_val
+                    step_log["train/attract_loss_step"] = _sa_val
+                    step_log["train/repel_loss_step"] = _sr_val
             log.info(msg)
             if wandb is not None and wandb.run is not None:
                 wandb.log(step_log, step=global_step + step)
 
     avg_loss = total_loss / len(loader)
+    n = len(loader)
     if is_neg_aware:
-        return avg_loss, total_clip_loss / len(loader), total_neg_loss / len(loader)
-    return avg_loss, None, None
+        return avg_loss, total_clip_loss / n, total_neg_loss / n, None, None
+    if is_image_pair:
+        return avg_loss, total_clip_loss / n, None, total_attract_loss / n, total_repel_loss / n
+    return avg_loss, None, None, None, None
 
 
 @torch.no_grad()
@@ -387,10 +422,13 @@ def eval_one_epoch(model, loader, loss_fn, device, amp_dtype, is_siglip=False):
     model.eval()
     raw = _raw_model(model)
     total_loss = 0.0
-    use_labels = isinstance(loss_fn, (LabelAwareClipLoss, LabelAwareSigLipLoss))
+    use_labels = isinstance(loss_fn, (LabelAwareClipLoss, LabelAwareSigLipLoss, ImagePairAwareLoss))
     is_neg_aware = use_labels and getattr(loss_fn, 'match_mode', None) == 'negative_aware'
+    is_image_pair = isinstance(loss_fn, ImagePairAwareLoss)
     total_clip_loss = 0.0
     total_neg_loss = 0.0
+    total_attract_loss = 0.0
+    total_repel_loss = 0.0
     logit_bias = getattr(raw, "logit_bias", None) if is_siglip else None
     for images, texts, labels in loader:
         images = images.to(device)
@@ -414,11 +452,21 @@ def eval_one_epoch(model, loader, loss_fn, device, amp_dtype, is_siglip=False):
             _n = getattr(loss_fn, '_last_neg_loss', None)
             total_clip_loss += _c.item() if _c is not None else loss.item()
             total_neg_loss += _n.item() if _n is not None else 0.0
+        elif is_image_pair:
+            _c = getattr(loss_fn, '_last_clip_loss', None)
+            _a = getattr(loss_fn, '_last_attract_loss', None)
+            _r = getattr(loss_fn, '_last_repel_loss', None)
+            total_clip_loss += _c.item() if _c is not None else loss.item()
+            total_attract_loss += _a.item() if _a is not None else 0.0
+            total_repel_loss += _r.item() if _r is not None else 0.0
         total_loss += loss.item()
     avg_loss = total_loss / len(loader)
+    n = len(loader)
     if is_neg_aware:
-        return avg_loss, total_clip_loss / len(loader), total_neg_loss / len(loader)
-    return avg_loss, None, None
+        return avg_loss, total_clip_loss / n, total_neg_loss / n, None, None
+    if is_image_pair:
+        return avg_loss, total_clip_loss / n, None, total_attract_loss / n, total_repel_loss / n
+    return avg_loss, None, None, None, None
 
 
 # ── Early stopping ────────────────────────────────────────────────────────────
@@ -645,6 +693,12 @@ def main():
                 rank=rank,
                 world_size=world_size,
             )
+    elif args.match_mode == "image_pair":
+        loss_fn = ImagePairAwareLoss(
+            attract_weight=args.attract_weight,
+            repel_weight=args.repel_weight,
+            repel_margin=args.repel_margin,
+        )
     else:
         if not is_siglip:
             loss_fn = LabelAwareClipLoss(
@@ -659,9 +713,13 @@ def main():
                 neg_margin=args.negative_margin,
             )
     if is_main:
-        log.info(f"Loss: {args.loss}/{args.match_mode}"
-                 + (f"  neg_weight={args.negative_weight}  neg_margin={args.negative_margin}"
-                    if args.match_mode == "negative_aware" else ""))
+        if args.match_mode == "image_pair":
+            log.info(f"Loss: image_pair  attract_weight={args.attract_weight}"
+                     f"  repel_weight={args.repel_weight}  repel_margin={args.repel_margin}")
+        else:
+            log.info(f"Loss: {args.loss}/{args.match_mode}"
+                     + (f"  neg_weight={args.negative_weight}  neg_margin={args.negative_margin}"
+                        if args.match_mode == "negative_aware" else ""))
 
     # ── Early stopping ────────────────────────────────────────────────────────
     early_stopper = None
@@ -672,6 +730,7 @@ def main():
     best_epoch = 0
     global_step = 0
     is_neg_aware = getattr(loss_fn, 'match_mode', None) == 'negative_aware'
+    is_image_pair = isinstance(loss_fn, ImagePairAwareLoss)
     train_loss_history: list[float] = []
     val_loss_history: list[float] = []
     train_clip_loss_history: list[float] = []
@@ -731,7 +790,7 @@ def main():
         if train_sampler is not None:
             train_sampler.set_epoch(epoch)  # ensures different shuffle each epoch
 
-        train_loss, train_clip_loss, train_neg_loss = train_one_epoch(
+        train_loss, train_clip_loss, train_neg_loss, train_attract_loss, train_repel_loss = train_one_epoch(
             model, train_loader, loss_fn, optimizer, scaler,
             device, epoch, amp_dtype, args.epochs,
             args.report_interval_steps, args.grad_accum_steps,
@@ -743,8 +802,10 @@ def main():
         val_loss = None
         val_clip_loss = None
         val_neg_loss = None
+        val_attract_loss = None
+        val_repel_loss = None
         if val_loader is not None:
-            val_loss, val_clip_loss, val_neg_loss = eval_one_epoch(model, val_loader, loss_fn, device, amp_dtype, is_siglip=is_siglip)
+            val_loss, val_clip_loss, val_neg_loss, val_attract_loss, val_repel_loss = eval_one_epoch(model, val_loader, loss_fn, device, amp_dtype, is_siglip=is_siglip)
             if world_size > 1:
                 t = torch.tensor(val_loss, device=device)
                 dist.all_reduce(t)
@@ -776,10 +837,22 @@ def main():
             neg_suffix = ""
             if is_neg_aware and train_clip_loss is not None:
                 neg_suffix = f"  [clip={train_clip_loss:.4f}  rep={train_neg_loss:.4f}]"
+            elif is_image_pair and train_clip_loss is not None:
+                neg_suffix = (
+                    f"  [clip={train_clip_loss:.4f}"
+                    f"  attract={train_attract_loss:.4f}"
+                    f"  repel={train_repel_loss:.4f}]"
+                )
             if val_loss is not None:
                 val_neg_suffix = ""
                 if is_neg_aware and val_clip_loss is not None:
                     val_neg_suffix = f"  [clip={val_clip_loss:.4f}  rep={val_neg_loss:.4f}]"
+                elif is_image_pair and val_clip_loss is not None:
+                    val_neg_suffix = (
+                        f"  [clip={val_clip_loss:.4f}"
+                        f"  attract={val_attract_loss:.4f}"
+                        f"  repel={val_repel_loss:.4f}]"
+                    )
                 log.info(
                     f"Epoch {epoch}/{args.epochs} — "
                     f"train={train_loss:.4f}{neg_suffix}  val={val_loss:.4f}{val_neg_suffix}  lr={current_lr:.2e}"
@@ -801,10 +874,20 @@ def main():
                     epoch_metrics["val/loss"] = val_loss
                 if train_clip_loss is not None:
                     epoch_metrics["train/clip_loss"] = train_clip_loss
-                    epoch_metrics["train/neg_loss"] = train_neg_loss if train_neg_loss is not None else 0.0
+                if train_neg_loss is not None:
+                    epoch_metrics["train/neg_loss"] = train_neg_loss
+                if train_attract_loss is not None:
+                    epoch_metrics["train/attract_loss"] = train_attract_loss
+                if train_repel_loss is not None:
+                    epoch_metrics["train/repel_loss"] = train_repel_loss
                 if val_clip_loss is not None:
                     epoch_metrics["val/clip_loss"] = val_clip_loss
-                    epoch_metrics["val/neg_loss"] = val_neg_loss if val_neg_loss is not None else 0.0
+                if val_neg_loss is not None:
+                    epoch_metrics["val/neg_loss"] = val_neg_loss
+                if val_attract_loss is not None:
+                    epoch_metrics["val/attract_loss"] = val_attract_loss
+                if val_repel_loss is not None:
+                    epoch_metrics["val/repel_loss"] = val_repel_loss
                 wandb.log(epoch_metrics, step=global_step)
 
             monitor_loss = val_loss if val_loss is not None else train_loss

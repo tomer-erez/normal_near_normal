@@ -1,0 +1,192 @@
+\begin{abstract}
+Medical image archives contain millions of studies with limited structured annotations, making zero-shot, text-based image retrieval a critical yet underexplored capability.   biomedical vision-language models are primarily optimized for report-to-image matching, which fundamentally misaligns with clinical free-text query retrieval and posses biasses from the free-form of writing. Consequently, these models suffer severe degradation when confronted with compositional queries, particularly those involving multi-pathology conjunctions and explicit negations. To expose and address this gap, we introduce \textsc{CXR-Retrieve}, a structured retrieval benchmark derived from MIMIC-CXR containing 5,159 test images and 247 queries across single-label, multi-label, and negation tiers. Furthermore, we propose a novel %label-aware
+contrastive learning objective that specifically targets free-text retrieval. Our method actively attracts images with matching pathology profiles while explicitly repelling mismatched images and hard negatives (e.g., pushing the embedding of "edema" apart from "no edema"). By training across all query types, our approach significantly improves retrieval precision over state-of-the-art reference models by \mk{Add number}, setting a new standard for compositional and negation-aware chest radiography retrieval.
+\end{abstract}
+
+
+
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{figs/f1 scores negbio.png}
+    \caption{f1 score of manually annotation of mimic-cxr.}
+    \label{fig:f1}
+\end{figure}
+
+
+\section{Introduction}
+
+Clinical medical archives contain massive volumes of imaging data, yet the vast majority remain unannotated, severely limiting searchable access. Effective zero-shot image retrieval holds profound clinical and research value: it enables rapid dataset construction, supports case-based radiologist education, and powers clinical decision-support tools that surface visually similar prior cases. While vision-language pretrained models (VLPs) like CLIP~\cite{radford2021learning} have demonstrated remarkable success in learning joint image-text embedding spaces, their application to complex medical domains remains constrained.
+
+A primary bottleneck is a fundamental objective mismatch. Most foundational medical VLPs, such as CXR-CLIP~\cite{you2023cxrclip} and BioMed-CLIP~\cite{biomedclip}, are trained almost exclusively under a \textbf{report-matching objective}, aiming to retrieve a study based on its corresponding full radiology report. This is fundamentally distinct from \textbf{clinical query retrieval}, where a user inputs a free-form constraint (e.g., ``pleural effusion but no cardiomegaly'') to retrieve scans satisfying that specific clinical profile. Due to this mismatch, current models exhibit two systematic failure modes. First, \textbf{compositional queries} cause sharp precision degradation, where multi-pathology conjunctions overwhelm the model's standard retrieval capacity \mk{Add ref}. Second, \textbf{negation constraints} effectively fail entirely due to a systemic affirmation bias that incorrectly links negated text tokens to positive visual features.\mk{Add ref to table/figure.. likely good to be to teaser}
+
+To address these critical limitations, this paper makes three key contributions:
+\begin{enumerate}
+    \item \textbf{Benchmark.} We introduce \textsc{CXR-Retrieve}, a structured retrieval benchmark derived from MIMIC-CXR~\cite{johnson2019mimic} comprising 5,159 images and 247 dynamic queries. It features explicit evaluation tiers for single-label, multi-label conjunction, and negation queries---specifically engineered to expose failure modes missed by traditional report-level metrics.
+    
+    \item \textbf{Method.} We propose a novel label-aware contrastive objective designed for clinical free-text retrieval. By simulating user queries during training, our method explicitly attracts matching text-image embeddings, forcefully repels contradictory clinical concepts via hard negative mining, and builds robustness across all query types.
+    
+    \item \textbf{Analysis.} Extensively evaluated against state-of-the-art baselines including BioMed-CLIP and CXR-CLIP, our approach establishes new benchmarks across single-label, conjunction, and negation query retrieval, proving the necessity of explicitly modeling exclusionary clinical logic.
+\end{enumerate}
+
+
+\section{Related Work}
+\mk{will finelize later}
+\subsection{Vision Language Pretraining for Medical Imaging}
+
+CLIP~\cite{radford2021learning}-based models struggle with radiology due to specialized medical language. CXR-CLIP~\cite{you2023cxrclip} (SOTA) and BioMed-CLIP~\cite{biomedclip} is trained for report-matching, not clinical query retrieval — a fundamentally different task.
+
+\subsection{Compositional and Negation-Aware Retrieval}
+reference models fail at multi-constraint queries (e.g., "A and B but not C")
+Negation is systematically ignored — embeddings for "pleural effusion" and "no pleural effusion" are nearly identical (affirmation bias).
+Winoground~\cite{thrush2022winoground} 
+and COLA~\cite{ray2023cola} show that vision--language models systematically 
+fail at attribute-object binding, retrieving images based on individual concept 
+presence rather than their correct joint configuration.
+
+
+%rethink if to mention at all...
+% \subsection{Negation in Medical Vision--Language Models}
+% Park~\cite{ko2025bringclip} : negation-aware training, but only classification/report retrieval, single-label queries
+% Vu et al.~\cite{vu2025negation} .: negation retrieval, but one condition, ~300 images, no conjunction queries, no reusable benchmark
+
+% Our work differs from both along the same axis: we target the query-retrieval 
+% setting directly, span all three query types---single-label, multi-label 
+% conjunction, and negation---and derive training signal from confirmed pathology 
+% labels across all 14 CheXpert classes rather than hand-constructed clinical 
+% contradictions or single-condition distractor pairs. \textsc{CXR-Retrieve} is, 
+% to our knowledge, the first benchmark to evaluate chest X-ray retrieval jointly 
+% across compositional and negated queries.
+
+
+\section{Benchmark}
+\mk{here we need mostly to explain the data source, the problem with it, and thus how we construct the couples (pos and neg)...}.
+
+MIMIC-CXR~\cite{johnson2019mimic} - 377{,}110 chest
+radiographs from 227{,}827 studies, paired only with their free-text reports
+and no structured labels --- which is why models trained to match these reports
+to images fail when queried for specific pathologies on demand. We build on the
+MIMIC-CXR-JPG~\cite{johnson2019mimicjpg} variant, which adds 14 pathology labels
+per study extracted from the reports by two NLP labelers, NegBio and CheXpert;
+per-label agreement against radiologist annotations is shown in
+Figure~\ref{fig:f1}. This allows us to train models to match label based queries and clinical images. The test set has 5{,}159 images and 247 queries.
+We keep 10 of the 14 labels, dropping Support Devices
+(not a clinical finding) and No Finding, Enlarged Cardiomediastinum, and
+Pleural Other for low labeler precision.
+
+\subsection{retrieval in clip}
+We pre-compute all image embeddings with the model. Then, given an input query, the model calculates it's embedding. we retrieve the top K images which their embeddings have the highest cosine similarity with the query's embedding. a retrieval is successful if the image has labels that satisfy all of the query's constraints.
+
+\subsection{Label Semantics}
+Each label takes one of four values: positive (1), negative (0), uncertain
+($-1$), or unmentioned (blank). 
+This lets us construct query--image pairs over a single label or a composite of several labels, each required to be present or absent.
+
+\subsection{Handling Missing Labels}
+A report only states what the radiologist chose to mention, so
+\emph{unmentioned is not the same as confirmed absent \te{explain why?}}.
+for evaluation We report two settings: one counting only
+explicit negatives as negative, and one also counting missing labels as negative
+\te{we can easily add to the eval, is it helpful?}. 
+for training, see next section.
+
+\subsection{Queries: three tiers of constraint}
+\begin{itemize}
+    \item \textbf{Single-label:} one required finding (``a chest X-ray with edema'').
+    \item \textbf{Conjunction:} two required findings (``edema and effusion'').
+    \item \textbf{Negation:} one required, other must be  (``edema but no effusion'').
+\end{itemize}
+
+\subsection{Evaluation Metrics}
+We use two metrics per query tier:
+\begin{itemize}
+    \item \textbf{Precision@$k$:} fraction of the top-$k$ results that are relevant.
+    \item \textbf{Recall@$k$:} fraction of all relevant items recovered in the
+    top-$k$; reported as a secondary metric, since for most queries the relevant
+    pool far exceeds $k$.
+\end{itemize}
+
+
+\section{Method}
+
+\subsection{Architecture}
+Dual-encoder (ViT-B/32 vision + CLIP text encoder), fine-tuned via LoRA adapters on
+attention and MLP layers. Only $\sim$1.9\% of parameters are trainable; adapters are
+merged into base weights after training.
+
+\subsection{Caption Synthesis}
+We synthesize structured free-text captions from CheXpert label columns to simulate
+clinical queries at training time:
+\begin{itemize}
+    \item \textbf{Single (50\%):} ``a chest X-ray with \textit{A}'' — $A=1$
+    \item \textbf{Pair (25\%):} ``a chest X-ray with \textit{A} and \textit{B}'' — $A=1, B=1$
+    \item \textbf{Negation (25\%):} ``a chest X-ray with \textit{A} and no \textit{B}'' — $A=1, B=0$ (confirmed absent, not merely unmentioned)
+\end{itemize}
+This mirrors the three evaluation tiers directly, ensuring every query form seen at
+test time is also covered during training. Uncertain labels ($-1$) are excluded.
+
+\subsection{Label-Aware Contrastive Loss}
+
+Let $B$ be the batch size, $\mathbf{z}_i^v, \mathbf{z}_i^t \in \mathbb{R}^d$ the
+$\ell_2$-normalised image and text embeddings for sample $i$, and $\tau$ the learned
+logit scale.  Each sample carries a label vector $\mathbf{y}_i \in \{-1, 0, 1\}^L$
+where $1$ = pathology confirmed, $-1$ = explicitly ruled out (CSV~0), and $0$ =
+missing/uncertain (ignored).
+
+\paragraph{Image--text term.}
+We use a SigLIP diagonal loss: each image is paired only with its own synthesised
+caption, and all other image--text combinations are treated as negatives:
+\begin{equation}
+    \mathcal{L}_{\mathrm{it}}
+    = -\frac{1}{B}\sum_{i=1}^{B}\sum_{j=1}^{B}
+      \log\sigma\!\bigl(y^{\mathrm{it}}_{ij}\cdot\tau\langle\mathbf{z}_i^v,\mathbf{z}_j^t\rangle\bigr),
+    \quad y^{\mathrm{it}}_{ij} = \begin{cases}+1 & i=j \\ -1 & i\neq j.\end{cases}
+\end{equation}
+
+\paragraph{Image--image attraction.}
+Two images that share the same confirmed label value on any pathology should be close
+in embedding space, regardless of which caption each was paired with.  Define the
+\emph{attract} set:
+\begin{equation}
+    \mathcal{A} = \bigl\{(i,j) : i\neq j,\;
+        \exists\, l \text{ s.t. }
+        (y_{il}=y_{jl}=1) \;\text{or}\; (y_{il}=y_{jl}=-1)
+    \bigr\}.
+\end{equation}
+The attraction loss minimises the distance to a target cosine similarity of 1:
+\begin{equation}
+    \mathcal{L}_{\mathrm{attr}}
+    = \frac{1}{|\mathcal{A}|}\sum_{(i,j)\in\mathcal{A}}
+      \bigl(1 - \langle\mathbf{z}_i^v,\mathbf{z}_j^v\rangle\bigr).
+\end{equation}
+
+\paragraph{Image--image repulsion.}
+Two images that have \emph{conflicting} values for the same label (one positive, one
+negative) should be separated.  We consider only pairs that do not also share a
+matching label — attraction takes priority:
+\begin{equation}
+    \mathcal{C} = \bigl\{(i,j) : i\neq j,\;
+        \exists\, l \text{ s.t. }
+        y_{il} \cdot y_{jl} = -1
+    \bigr\} \setminus \mathcal{A}.
+\end{equation}
+The repulsion loss is a hinge on cosine similarity above margin $\tau_r$:
+\begin{equation}
+    \mathcal{L}_{\mathrm{rep}}
+    = \frac{1}{|\mathcal{C}|}\sum_{(i,j)\in\mathcal{C}}
+      \max\!\bigl(0,\;\langle\mathbf{z}_i^v,\mathbf{z}_j^v\rangle - \tau_r\bigr).
+\end{equation}
+
+\paragraph{Total loss.}
+\begin{equation}
+    \mathcal{L} = \mathcal{L}_{\mathrm{it}}
+                + \lambda_a\,\mathcal{L}_{\mathrm{attr}}
+                + \lambda_r\,\mathcal{L}_{\mathrm{rep}},
+\end{equation}
+where $\lambda_a$ and $\lambda_r$ are tunable weights.  Note that $\mathcal{L}_{\mathrm{attr}}$
+and $\mathcal{L}_{\mathrm{rep}}$ act \emph{only on image embeddings} — text embeddings
+receive gradient only from $\mathcal{L}_{\mathrm{it}}$.  This is intentional: query
+text at inference time is unseen, so we avoid entangling the text encoder with
+image-level co-occurrence patterns from the training set.
+
+\section{Experiments \& Results}

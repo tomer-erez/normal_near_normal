@@ -1,6 +1,6 @@
 #!/bin/bash
 
-name="siglip_matchmode_single_label_captionmode_all_10labels"
+name="tst"
 set -e
 cd "$(dirname "$0")"
 source ~/miniconda3/etc/profile.d/conda.sh
@@ -13,12 +13,16 @@ tmux new-session -d -s $name "
         --precision bf16 \
         --lr 1e-4 \
         --min-lr 1e-8 \
-        --grad-accum-steps 4 \
+        --grad-accum-steps 1 \
+        --epochs 5 \
+        --max-samples 640
         --batch-size 64 \
         --nan-mode ignore \
         --loss siglip \
         --caption-mode all \
-        --match-mode single_label \
+        --match-mode image_pair \
+        --attract-weight 0.1 \
+        --repel-weight 0.1 \
         --lora-r 16 \
         --lora-alpha 16 \
         --output-dir ./experiments/$name \

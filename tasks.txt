@@ -38,6 +38,7 @@ important experiments left to run:
 - siglip vs clip loss 
 - fine tune the cxrclip model again? the swint and the resnet
 - train with different splits of single/pair/negation in the sampling of the data and show results on each metric
+- mathematical/ai explanability of results? gradcam or something?
 
 notes from 3.6 meeting:
 

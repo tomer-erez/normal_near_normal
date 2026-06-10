@@ -371,6 +371,123 @@ class LabelAwareClipLoss(nn.Module):
 
 # ── Sigmoid variant (SigLIP loss) ─────────────────────────────────────────────
 
+class ImagePairAwareLoss(nn.Module):
+    """
+    Three-component loss for label-supervised image retrieval training:
+
+    1. IMAGE-TEXT (SigLIP diagonal): each (image_i, text_i) pair is pulled
+       together; all off-diagonal image-text pairs are pushed apart.
+
+    2. IMAGE-IMAGE ATTRACTION: image pairs that share the same label value
+       (both 1.0 or both -1.0 for any label) are pulled closer in image-
+       embedding space only.
+
+    3. IMAGE-IMAGE REPULSION: image pairs with a conflicting label (one 1.0,
+       one -1.0 for any label) are pushed apart in image-embedding space only.
+
+    Missing labels (0.0 in the tensor) are ignored in all pairings.
+    Use --nan-mode ignore when creating the dataset so that only CSV 0
+    (explicitly ruled out) encodes as -1.0, and NaN (unmentioned) is 0.0.
+
+    Args:
+        attract_weight: λ_a — weight for the image-image attraction term.
+        repel_weight:   λ_r — weight for the image-image repulsion term.
+        repel_margin:   τ   — cosine-sim threshold: pairs already below τ are
+                        not penalised by the repulsion hinge. Default 0.0.
+    """
+
+    def __init__(
+        self,
+        attract_weight: float = 0.1,
+        repel_weight: float = 0.1,
+        repel_margin: float = 0.0,
+    ):
+        super().__init__()
+        self.attract_weight = attract_weight
+        self.repel_weight = repel_weight
+        self.repel_margin = repel_margin
+
+    def _build_image_pair_masks(
+        self, labels: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Build attract and conflict boolean masks from the label matrix.
+
+        attract[i,j]: True if i and j share ≥1 label with the same non-zero
+                      value (both 1.0 or both -1.0).
+        conflict[i,j]: True if i and j have ≥1 label where one is 1.0 and
+                       the other is -1.0, AND they do not attract on any label.
+                       (attraction wins when labels also coincide.)
+
+        Both masks are False on the diagonal.
+        """
+        pos = (labels == 1.0).float()   # (B, L)
+        neg = (labels == -1.0).float()  # (B, L)
+
+        attract = ((pos @ pos.T) > 0) | ((neg @ neg.T) > 0)
+        attract.fill_diagonal_(False)
+
+        conflict = ((pos @ neg.T) + (neg @ pos.T)) > 0
+        conflict = conflict & ~attract
+        conflict.fill_diagonal_(False)
+
+        return attract, conflict
+
+    def batch_stats(self, labels: torch.Tensor) -> dict:
+        with torch.no_grad():
+            attract, conflict = self._build_image_pair_masks(labels)
+            B = labels.shape[0]
+            n_pairs = B * (B - 1)
+            return {
+                "avg_positives_per_sample": 1.0,
+                "pct_diagonal_only": 0.0,
+                "pct_conflict_pairs": 100.0 * conflict.float().sum().item() / max(n_pairs, 1),
+                "pct_attract_pairs": 100.0 * attract.float().sum().item() / max(n_pairs, 1),
+            }
+
+    def forward(
+        self,
+        image_features: torch.Tensor,
+        text_features: torch.Tensor,
+        logit_scale: torch.Tensor,
+        labels: torch.Tensor,
+        logit_bias: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        B = image_features.shape[0]
+
+        # 1. Image-text SigLIP loss (diagonal ±1 target)
+        logits = logit_scale * (image_features @ text_features.T)
+        if logit_bias is not None:
+            logits = logits + logit_bias
+        it_target = 2.0 * torch.eye(B, device=image_features.device) - 1.0
+        clip_loss = -F.logsigmoid(it_target * logits).sum() / B
+
+        self._last_clip_loss = clip_loss.detach()
+        self._last_attract_loss = None
+        self._last_repel_loss = None
+
+        attract, conflict = self._build_image_pair_masks(labels)
+        img_sim = image_features @ image_features.T  # cosine sim, L2-normalised inputs
+
+        total_loss = clip_loss
+
+        # 2. Image-image attraction: MSE towards cosine-sim = 1.0
+        if attract.any() and self.attract_weight > 0:
+            attract_loss = (1.0 - img_sim[attract]).mean()
+            self._last_attract_loss = attract_loss.detach()
+            total_loss = total_loss + self.attract_weight * attract_loss
+
+        # 3. Image-image repulsion: hinge on cosine-sim above repel_margin
+        if conflict.any() and self.repel_weight > 0:
+            repel_loss = F.relu(img_sim[conflict] - self.repel_margin).mean()
+            self._last_repel_loss = repel_loss.detach()
+            total_loss = total_loss + self.repel_weight * repel_loss
+
+        return total_loss
+
+
+# ── Sigmoid variant (SigLIP loss) ─────────────────────────────────────────────
+
 class LabelAwareSigLipLoss(nn.Module):
     """
     Multi-positive sigmoid binary cross-entropy driven by in-batch label overlap.

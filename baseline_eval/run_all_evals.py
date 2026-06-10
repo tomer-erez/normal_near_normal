@@ -95,14 +95,14 @@ MODELS = [
         "finetuned_pretrained": "",
         "finetuned_checkpoint": "experiments/_vanilla_bsz16x8/final_merged.pt",
     },
-        {
-        "name": "vanilla_siglip_loss",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/_vanilla_bsz16x8_with_siglip/final_merged.pt",
-    },
+    #     {
+    #     "name": "vanilla_siglip_loss",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/_vanilla_bsz16x8_with_siglip/final_merged.pt",
+    # },
     #         {
     #     "name": "ft_swint_siglip_loss",
     #     "model_type": "finetuned",
@@ -228,14 +228,14 @@ MODELS = [
     #     "finetuned_checkpoint": "experiments/vitb32_cliploss_negaware_nanmode_ignore/final_merged.pt",
     # },
 
-                                    {
-        "name": "fixed_negaware_005",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/fixed_negaware_005/final_merged.pt",
-    },
+    #                                 {
+    #     "name": "fixed_negaware_005",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/fixed_negaware_005/final_merged.pt",
+    # },
     
     # {
     #     "name": "fixed_negaware_015",
@@ -291,14 +291,14 @@ MODELS = [
         "finetuned_pretrained": "",
         "finetuned_checkpoint": "experiments/caption_mode_all_clip/final_merged.pt",
     },
-                {
-        "name": "caption_mode_all_sglip",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/caption_mode_all_sglip/final_merged.pt",
-    },
+    #             {
+    #     "name": "caption_mode_all_sglip",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/caption_mode_all_sglip/final_merged.pt",
+    # },
                 
     #                             {
     #     "name": "clip_new_nanmode_ignore_matchmode_singlelabel",
@@ -328,51 +328,51 @@ MODELS = [
     # },    
     
         #
-    {
-        "name": "siglip_matchmode_graded_captionmode_all_10labels",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/siglip_matchmode_graded_captionmode_all_10labels/final_merged.pt",
-    },   
+    # {
+    #     "name": "siglip_matchmode_graded_captionmode_all_10labels",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/siglip_matchmode_graded_captionmode_all_10labels/final_merged.pt",
+    # },   
     
     
-        {
-        "name": "biomedclip_matchmode_graded_captionmode_all_10labels",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/biomedclip_matchmode_graded_captionmode_all_10labels/final_merged.pt",
-    },   
+    #     {
+    #     "name": "biomedclip_matchmode_graded_captionmode_all_10labels",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/biomedclip_matchmode_graded_captionmode_all_10labels/final_merged.pt",
+    # },   
         
-                {
-        "name": "clip_matchmode_graded_captionmode_all_10labels",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/clip_matchmode_graded_captionmode_all_10labels/final_merged.pt",
-    },   
+    #             {
+    #     "name": "clip_matchmode_graded_captionmode_all_10labels",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/clip_matchmode_graded_captionmode_all_10labels/final_merged.pt",
+    # },   
                 
-                                {
-        "name": "clip_matchmode_single_label_captionmode_all_10labels",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/clip_matchmode_single_label_captionmode_all_10labels/final_merged.pt",
-    },   
+    #                             {
+    #     "name": "clip_matchmode_single_label_captionmode_all_10labels",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/clip_matchmode_single_label_captionmode_all_10labels/final_merged.pt",
+    # },   
                                 
-                                                                {
-        "name": "siglip_matchmode_single_label_captionmode_all_10labels",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/siglip_matchmode_single_label_captionmode_all_10labels/final_merged.pt",
-    },   
+    #                                                             {
+    #     "name": "siglip_matchmode_single_label_captionmode_all_10labels",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/siglip_matchmode_single_label_captionmode_all_10labels/final_merged.pt",
+    # },   
         
 ]
 
