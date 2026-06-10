@@ -134,13 +134,16 @@ where $1$ = pathology confirmed, $-1$ = explicitly ruled out (CSV~0), and $0$ =
 missing/uncertain (ignored).
 
 \paragraph{Image--text term.}
-We use a SigLIP diagonal loss: each image is paired only with its own synthesised
-caption, and all other image--text combinations are treated as negatives:
+We use the standard symmetric CLIP cross-entropy loss with a diagonal target:
+each image must rank its own paired caption above all others, and vice versa:
 \begin{equation}
     \mathcal{L}_{\mathrm{it}}
-    = -\frac{1}{B}\sum_{i=1}^{B}\sum_{j=1}^{B}
-      \log\sigma\!\bigl(y^{\mathrm{it}}_{ij}\cdot\tau\langle\mathbf{z}_i^v,\mathbf{z}_j^t\rangle\bigr),
-    \quad y^{\mathrm{it}}_{ij} = \begin{cases}+1 & i=j \\ -1 & i\neq j.\end{cases}
+    = -\frac{1}{2B}\sum_{i=1}^{B}\Bigl[
+        \log\frac{e^{\tau\langle\mathbf{z}_i^v,\mathbf{z}_i^t\rangle}}
+                 {\sum_{j}e^{\tau\langle\mathbf{z}_i^v,\mathbf{z}_j^t\rangle}}
+      + \log\frac{e^{\tau\langle\mathbf{z}_i^v,\mathbf{z}_i^t\rangle}}
+                 {\sum_{j}e^{\tau\langle\mathbf{z}_j^v,\mathbf{z}_i^t\rangle}}
+      \Bigr].
 \end{equation}
 
 \paragraph{Image--image attraction.}

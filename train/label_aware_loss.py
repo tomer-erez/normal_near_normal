@@ -375,8 +375,8 @@ class ImagePairAwareLoss(nn.Module):
     """
     Three-component loss for label-supervised image retrieval training:
 
-    1. IMAGE-TEXT (SigLIP diagonal): each (image_i, text_i) pair is pulled
-       together; all off-diagonal image-text pairs are pushed apart.
+    1. IMAGE-TEXT (CLIP diagonal): symmetric softmax cross-entropy over the
+       (image, text) logit matrix with a one-hot diagonal target.
 
     2. IMAGE-IMAGE ATTRACTION: image pairs that share the same label value
        (both 1.0 or both -1.0 for any label) are pulled closer in image-
@@ -451,16 +451,13 @@ class ImagePairAwareLoss(nn.Module):
         text_features: torch.Tensor,
         logit_scale: torch.Tensor,
         labels: torch.Tensor,
-        logit_bias: torch.Tensor | None = None,
     ) -> torch.Tensor:
         B = image_features.shape[0]
 
-        # 1. Image-text SigLIP loss (diagonal ±1 target)
-        logits = logit_scale * (image_features @ text_features.T)
-        if logit_bias is not None:
-            logits = logits + logit_bias
-        it_target = 2.0 * torch.eye(B, device=image_features.device) - 1.0
-        clip_loss = -F.logsigmoid(it_target * logits).sum() / B
+        # 1. Image-text CLIP loss: symmetric softmax cross-entropy, diagonal target
+        logits = logit_scale * (image_features @ text_features.T)  # (B, B)
+        targets = torch.arange(B, device=image_features.device)
+        clip_loss = (F.cross_entropy(logits, targets) + F.cross_entropy(logits.T, targets)) / 2
 
         self._last_clip_loss = clip_loss.detach()
         self._last_attract_loss = None

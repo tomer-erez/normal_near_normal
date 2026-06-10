@@ -105,17 +105,35 @@ Controls which (image, text) pairs count as positives in the loss. Standard CLIP
 | `single_label` | Share ≥1 positive label | Soft target matrix; binary (0 or 1/N per pair) |
 | `two_label` | Share ≥2 positive labels | Pair with `--caption-mode pair` |
 | `negative_aware` | `single_label` + hinge repulsion for conflict pairs | Use large batch; no grad accum |
-| `graded` ⭐ | Soft target proportional to number of shared labels | **Best for optimising all three query types simultaneously** |
+| `graded` | Soft target proportional to number of shared labels | Distinguishes "shares 1" from "shares 2" labels |
+| `image_pair` ⭐ | SigLIP diagonal + image-image attraction & repulsion | **Recommended final mode** |
 
-**`graded` mode** weights attraction by the count of shared positive labels: a pair sharing 2 labels attracts twice as strongly as a pair sharing 1. This teaches the model to distinguish "has both A and B" from "has just A", which is exactly what pair queries need — without sacrificing single or negative query performance. Works with both `--loss clip` and `--loss siglip`. Pair with `--caption-mode all --nan-mode ignore`.
+**`image_pair` mode** is the recommended training objective. It combines three loss terms:
 
-**Conflict pair** = one sample has label=1, the other has label=0/NaN for the same pathology, **and they share no confirmed positive labels**. If two samples share a positive label, attraction wins regardless of any contradictions on other labels — they are not flagged as conflicts.
+1. **Image-text CLIP** (`L_it`): symmetric softmax cross-entropy with diagonal target — each image must rank its own paired caption above all others in the batch, and vice versa.
+2. **Image-image attraction** (`L_attr`, weight `--attract-weight λ_a`): any two images sharing the same confirmed label value (both positive *or* both negative for any label) are pulled closer: `(1 − cosine_sim).mean()` over attract pairs.
+3. **Image-image repulsion** (`L_rep`, weight `--repel-weight λ_r`): image pairs with a conflicting label (one positive, one negative for the same label) are pushed apart via a hinge on cosine similarity.
+
+Crucially, **attraction and repulsion act only on image embeddings** — text embeddings receive gradient only from the image-text term. This avoids entangling the text encoder with training-set co-occurrence patterns.
+
+**Conflict pair** = one sample has label=1 and the other has label=−1 (explicit CSV 0, not NaN) for the same pathology. If a pair also shares a matching label, attraction takes priority and the pair is excluded from repulsion.
+
+Always pair with `--nan-mode ignore` — this ensures only *explicitly ruled-out* labels (CSV 0) trigger repulsion, not NaN (unmentioned) labels.
+
+Extra flags for `image_pair`:
+- `--attract-weight λ_a` (default `0.1`) — weight of the image-image attraction term
+- `--repel-weight λ_r` (default `0.1`) — weight of the image-image repulsion hinge
+- `--repel-margin τ_r` (default `0.0`) — cosine-sim threshold; pairs already below τ are not penalised
+
+**`graded` mode** weights attraction by the count of shared positive labels: a pair sharing 2 labels attracts twice as strongly as a pair sharing 1. Works with both `--loss clip` and `--loss siglip`. Pair with `--caption-mode all --nan-mode ignore`.
+
+**Conflict pair** (for `negative_aware`/`graded`) = one sample has label=1, the other has label=0/NaN for the same pathology, **and they share no confirmed positive labels**. Attraction wins otherwise.
 
 Extra flags for `negative_aware`:
 - `--negative-weight λ` (default `0.5`) — repulsion strength relative to the contrastive loss
-- `--negative-margin τ` (default `0.0`) — **logit-space** threshold; pairs with `logit_scale × cosine_sim < τ` are not penalised. `0.0` means any conflicting pair with a positive logit is penalised. Use negative values (e.g. `-20`) to demand stronger separation.
+- `--negative-margin τ` (default `0.0`) — **logit-space** threshold; pairs with `logit_scale × cosine_sim < τ` are not penalised.
 
-> **Important:** the repulsion hinge operates in logit space (`logit_scale × cosine_sim`, range ≈ ±100), not raw cosine space. This keeps the repulsion gradient on the same scale as the CLIP/SigLIP gradient. `--negative-weight 0.5` means roughly 50% of the gradient comes from repulsion.
+> **Important:** the repulsion hinge in `negative_aware` operates in logit space (`logit_scale × cosine_sim`, range ≈ ±100). The `image_pair` repulsion hinge operates in raw cosine space (range [−1, 1]).
 
 **Diagnostics** logged at step 0 of each epoch (label-aware modes):
 
@@ -124,6 +142,7 @@ Extra flags for `negative_aware`:
 | `avg_positives_per_sample` | > 2.0 | Increase `--batch-size` or switch to `single_label` |
 | `diagonal_only` | < 20% | Same as above |
 | `conflict_pairs` | 1–10% with `--nan-mode ignore` | > 10% usually means NaN pollution; switch to `--nan-mode ignore` |
+| `attract_pairs` (`image_pair`) | 20–60% | < 20%: batch too small; > 60%: labels too dense, fine |
 
 > **Important:** label-aware modes mine positives from the **live batch**. `--grad-accum-steps` does NOT help — batches across accumulation steps never see each other's labels. Increase `--batch-size` directly.
 
@@ -193,7 +212,8 @@ Use `--nan-mode ignore` when:
 | D — Negative-aware CLIP | `--match-mode negative_aware --negative-weight 0.5 --nan-mode ignore` | Negative queries |
 | E — SigLIP label-aware | `--loss siglip --match-mode single_label --nan-mode ignore` | General, implicit repulsion |
 | F — SigLIP + negative-aware | `--loss siglip --match-mode negative_aware --negative-weight 0.25 --nan-mode ignore` | Strongest negative repulsion |
-| G — Graded CLIP ⭐ | `--loss clip --match-mode graded --caption-mode all --nan-mode ignore --batch-size 128` | **Best single model for all three query types** |
+| G — Graded CLIP | `--loss clip --match-mode graded --caption-mode all --nan-mode ignore --batch-size 128` | Graded attraction across all query types |
+| H — Image-pair ⭐ | `--loss clip --match-mode image_pair --caption-mode all --nan-mode ignore --attract-weight 0.1 --repel-weight 0.1` | **Recommended: image-level attraction + repulsion** |
 
 ---
 
@@ -252,7 +272,20 @@ python train_lora.py --base-model ViT-B-32 --pretrained openai \
 
 > SigLIP already repels conflict pairs via target=−1; the hinge adds extra emphasis. Keep `--negative-weight` low (0.1–0.25).
 
-### Idea 7 — Frozen CXR-CLIP image encoder + fine-tuned text encoder
+### Idea 7 — Image-pair loss (recommended) ⭐
+```bash
+python train_lora.py --base-model ViT-B-32 --pretrained openai \
+    --loss clip --match-mode image_pair \
+    --caption-mode all --nan-mode ignore \
+    --attract-weight 0.1 --repel-weight 0.1 \
+    --batch-size 64
+```
+
+> Three-component loss: (1) SigLIP diagonal image-text pairing, (2) image-image attraction for same-label pairs, (3) image-image repulsion hinge for conflicting-label pairs. Attraction and repulsion act only on image embeddings. Use `--nan-mode ignore` so only explicitly ruled-out labels (CSV 0) trigger repulsion.
+
+---
+
+### Idea 9 — Frozen CXR-CLIP image encoder + fine-tuned text encoder
 ```bash
 # ResNet50 image encoder
 python train_lora.py --base-model ViT-B-32 --pretrained openai \
@@ -265,7 +298,7 @@ python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode single_label
 ```
 
-### Idea 8 — BiomedCLIP base model
+### Idea 10 — BiomedCLIP base model
 ```bash
 python train_lora.py \
     --base-model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224 \
@@ -292,8 +325,13 @@ python train_lora.py \
 
 After each training run, check the per-epoch log line:
 ```
+# negative_aware mode:
 [batch stats] avg_positives_per_sample=X.XX  diagonal_only=Y.Y%  conflict_pairs=Z.Z%
 Epoch N/M — train=X.XXXX  [clip=X.XXXX  rep=X.XXXX]  val=X.XXXX  lr=X.XXe-XX
+
+# image_pair mode:
+[batch stats] avg_positives_per_sample=1.00  diagonal_only=0.0%  conflict_pairs=Z.Z%  attract_pairs=A.A%
+Epoch N/M — train=X.XXXX  [clip=X.XXXX  attract=X.XXXX  repel=X.XXXX]  val=X.XXXX  lr=X.XXe-XX
 ```
 
 | Symptom | Cause | Fix |
