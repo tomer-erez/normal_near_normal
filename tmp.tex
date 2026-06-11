@@ -1,14 +1,156 @@
+% WACV 2027 Paper Template
+% based on the ICCV 2025 template (https://media.eventhosts.cc/Conferences/ICCV2025/ICCV2025-Author-Kit-Feb.zip) with
+% WACV-specific details (e.g., 2 tracks) from the WACV 2025 template (https://www.dropbox.com/scl/fi/su44zgdhrzik26p2xu37k/WACV-2025-Author-Kit-Template.zip?rlkey=5qcfimjhxnmx3wlyk7yhk8wg7&dl=0)
+
+\documentclass[10pt,twocolumn,letterpaper]{article}
+
+%%%%%%%%% PAPER TYPE  - PLEASE UPDATE FOR FINAL VERSION
+\usepackage[review,algorithms]{wacv}      % To produce the REVIEW version for the algorithms track
+% \usepackage[review,applications]{wacv}      % To produce the REVIEW version for the applications track
+% \usepackage[review,datasets]{wacv}      % To produce the REVIEW version for the datasets track
+% \usepackage{wacv}              % To produce the CAMERA-READY version
+%\usepackage[pagenumbers]{wacv} % To force page numbers, e.g. for an arXiv version
+
+% Import additional packages in the preamble file, before hyperref
+\input{preamble}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{nicefrac}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{geometry}
+% It is strongly recommended to use hyperref, especially for the review version.
+% hyperref with option pagebackref eases the reviewers' job.
+% Please disable hyperref *only* if you encounter grave issues, 
+% e.g. with the file validation for the camera-ready version.
+%
+% If you comment hyperref and then uncomment it, you should delete *.aux before re-running LaTeX.
+% (Or just hit 'q' on the first LaTeX run, let it finish, and you should be clear).
+\definecolor{wacvblue}{rgb}{0.21,0.49,0.74}
+\usepackage[pagebackref,breaklinks,colorlinks,allcolors=wacvblue]{hyperref}
+
+%%%%%%%%% PAPER ID  - PLEASE UPDATE
+\def\wacvPaperID{*****} % *** Enter the WACV Paper ID here
+\def\confName{WACV}
+\def\confYear{2027}
+
+
+%%%%%%%%% TITLE - PLEASE UPDATE
+\title{CXR-Retrieve: Compositional Text-to-Image Retrieval in Chest Radiography}%: Benchmarking Precision and Negation Awareness}
+
+%%%%%%%%% AUTHORS - PLEASE UPDATE
+\author{First Author\\
+Institution1\\
+Institution1 address\\
+{\tt\small firstauthor@i1.org}
+% For a paper whose authors are all at the same institution,
+% omit the following lines up until the closing ``}''.
+% Additional authors and addresses can be added with ``\and'',
+% just like the second author.
+% To save space, use either the email address or home page, not both
+\and
+Second Author\\
+Institution2\\
+First line of institution2 address\\
+{\tt\small secondauthor@i2.org}
+}
+
+\newcommand\mk[1]{\textcolor{cyan}{(\textbf{Moshe}: #1)}}
+\newcommand\te[1]{\textcolor{cyan}{(\textbf{Tomer}: #1)}}
+
+
+\begin{document}
+\maketitle
+
+
+% % the domain
+% Medical image archives contain millions of studies with limited structured 
+% annotation, making text-based retrieval a critical but underexplored problem.
+
+% % objective mismatch
+% 5.Existing biomedical models are optimized for report--image matching and not free text query retrieval, we focus on retrieval of images relevant to the pathologies in the query.
+% these models don't allow a user to type in free text what are the pathologies he wants to see and retrieve those?
+
+% % fail modes
+% 3.We identify two failure modes: 
+% existing models showed sharp degradation under composite queries like conjunction and negation.
+% % add a numeric example (50 percent - 30 percent or whatever)
+
+% % benchmark contribution
+% 4.benchmarK contribution: we introduce  a structured retrieval benchmark derived from MIMIC-CXR (5,159 test images, 247 queries) spanning single-label, multi-label-conjunction, and negation settings
+
+% % method contribution
+% 5.method contribution: methods to improve all types of free text query retrival accuracy, twofold:
+%     5.1. attracting similar images and repelling images with mismatch labels, and purposfully repelling items with explicit difference (edema vs no edema). 
+%     5.2. also train with the 3 types of queries?(positive, negative, conjunction)
+    
+% % results
+% 6.we improve over reference models by x
+
+% % teaser figure
+% 7.teaser figure options:
+%     a. our method
+%     b. results compared to reference models
+%     c. what other methods miss in terms of handling different queries?
+
+
+
 \begin{abstract}
-Medical image archives contain millions of studies with limited structured annotations, making zero-shot, text-based image retrieval a critical yet underexplored capability.   biomedical vision-language models are primarily optimized for report-to-image matching, which fundamentally misaligns with clinical free-text query retrieval and posses biasses from the free-form of writing. Consequently, these models suffer severe degradation when confronted with compositional queries, particularly those involving multi-pathology conjunctions and explicit negations. To expose and address this gap, we introduce \textsc{CXR-Retrieve}, a structured retrieval benchmark derived from MIMIC-CXR containing 5,159 test images and 247 queries across single-label, multi-label, and negation tiers. Furthermore, we propose a novel %label-aware
+Medical image archives contain millions of studies with limited structured annotations, making zero-shot, text-based image retrieval a critical yet underexplored capability.   biomedical vision-language models are primarily optimized for report-to-image matching, which fundamentally misaligns with clinical free-text query retrieval and posses biasses from the free-form of writing. Consequently, these models suffer severe degradation when confronted with compositional queries, particularly those involving multi-pathology conjunctions and explicit negations. To expose and address this gap, we introduce \textsc{CXR-Retrieve}, a structured retrieval benchmark %derived from MIMIC-CXR 
+containing 5,159 test images and 247 queries spanning both single and composed labels. \mk{are we?} We propose a novel %label-aware
 contrastive learning objective that specifically targets free-text retrieval. Our method actively attracts images with matching pathology profiles while explicitly repelling mismatched images and hard negatives (e.g., pushing the embedding of "edema" apart from "no edema"). By training across all query types, our approach significantly improves retrieval precision over state-of-the-art reference models by \mk{Add number}, setting a new standard for compositional and negation-aware chest radiography retrieval.
 \end{abstract}
 
 
 
+% \section{Introduction}
+
+% % A lot of data, hard to retrieve from
+% 1.medical archives in clinics are mostly un-annotated. making it hard to retrieve from. 
+
+% % why retrieving from it is important
+% 2.Effective retrieval has significant clinical and 
+% research value: enabling the construction datasets, supporting radiologist education through case-based learning, and powering clinical 
+% decision support tools that surface visually similar prior cases.
+
+% % why clip models
+% 3.Models such as CLIP learn a image--text embedding space, enabling 
+% zero-shot retrieval from natural language queries without requiring explicit 
+% annotations. 
+
+% % what current models are missing
+% 4.However, most reference models are trained under a \textbf{report-matching objective}: 
+% given a radiology report, retrieve its corresponding study(scans). 
+% This is fundamentally different from \textbf{clinical query retrieval}: given a 
+% free-form pathology description that satisfy it.
+
+
+% 5.This objective mismatch creates two systematic failure modes. 
+% First, \textbf{compositional queries} cause sharp precision degradation: precision@5 
+% drops from \textbf{x\%} for single-pathology queries to \textbf{y\%} for 
+% two-pathology conjunctions. 
+% Second, \textbf{negation constraints} effectively fail.
+
+% % our contribution
+% 6.To address these limitations, this paper makes three contributions:
+% \begin{enumerate}
+%     \item \textbf{Benchmark.} We introduce \textsc{CXR-Retrieve}, a structured 
+%     retrieval benchmark derived from MIMIC-CXR (5,159 images, 247 queries) 
+%     with explicit evaluation tiers for single-label, multi-label conjunction, 
+%     and negation queries---designed to expose failure modes that other methods do not capture.
+
+%     \item \textbf{Method.} We propose a label-aware contrastive objective that 
+%     attracts similar text - image embedding of same items, repells vastly different items, and trains with all query types to satisfy the free text a user might use for retrieval.
+
+%     \item \textbf{Analysis.} Evaluated against BioMed-CLIP and CXR-CLIP, our 
+%     approach sets a new state of the art on single-label, conjunction, negation query retrieval.
+% \end{enumerate}
 
 \begin{figure}
     \centering
-    \includegraphics[width=\linewidth]{figs/f1 scores negbio.png}
+    \includegraphics[width=\linewidth]{figs/f1 scores.png}
     \caption{f1 score of manually annotation of mimic-cxr.}
     \label{fig:f1}
 \end{figure}
@@ -60,16 +202,17 @@ presence rather than their correct joint configuration.
 
 
 \section{Benchmark}
-\mk{here we need mostly to explain the data source, the problem with it, and thus how we construct the couples (pos and neg)...}.
 
-MIMIC-CXR~\cite{johnson2019mimic} - 377{,}110 chest
+MIMIC-CXR~\cite{PhysioNet-mimic-cxr-2.1.0} - 377{,}110 chest
 radiographs from 227{,}827 studies, paired only with their free-text reports
 and no structured labels --- which is why models trained to match these reports
 to images fail when queried for specific pathologies on demand. We build on the
 MIMIC-CXR-JPG~\cite{johnson2019mimicjpg} variant, which adds 14 pathology labels
-per study extracted from the reports by two NLP labelers, NegBio and CheXpert;
+per study extracted from the reports by two NLP labelers: NegBio ~\cite{peng2017negbiohighperformancetoolnegation} and CheXpert~\cite{irvin2019chexpert};
 per-label agreement against radiologist annotations is shown in
-Figure~\ref{fig:f1}. This allows us to train models to match label based queries and clinical images. The test set has 5{,}159 images and 247 queries.
+Figure~\ref{fig:f1}. This allows us to train models to match label based queries and clinical images. 
+the dataset already contains train-test splits so no patient leakage occurs.
+The test set has 5{,}159 images and 247 queries.
 We keep 10 of the 14 labels, dropping Support Devices
 (not a clinical finding) and No Finding, Enlarged Cardiomediastinum, and
 Pleural Other for low labeler precision.
@@ -90,7 +233,52 @@ explicit negatives as negative, and one also counting missing labels as negative
 \te{we can easily add to the eval, is it helpful?}. 
 for training, see next section.
 
-\subsection{Queries: three tiers of constraint}
+\begin{table}[ht]
+\centering
+\caption{Overall distribution of CheXpert labels across all samples and pathologies. the dataset is dominated by nans}
+\label{tab:overall_label_distribution}
+\begin{tabular}{lrr}
+\hline
+\textbf{Label} & \textbf{Count} & \textbf{Percentage} \\
+\hline
+Positive ($1$)   & 633,824   & 12.00\% \\
+Negative ($0$)   & 249,448   & 4.72\% \\
+Uncertain ($-1$) & 112,555   & 2.13\% \\
+Missing (NaN)    & 4,283,713 & 81.13\% \\
+\hline
+Total            & 5,279,540 & 100.000\% \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Per-row label count breakdown across CheXpert labels. the dataset is dominated by
+nans}
+\label{tab:per_row_breakdown}
+\begin{tabular}{lrrrr}
+\hline
+\textbf{Label} & \textbf{=0} & \textbf{=1} & \textbf{>1} & \textbf{>3} \\
+\hline
+Positive ($1$)   & 5.5\%  & 53.8\% & 40.6\% & 3.0\% \\
+Negative ($0$)   & 63.4\% & 19.7\% & 16.8\% & 0.8\% \\
+Uncertain ($-1$) & 78.8\% & 14.2\% & 7.0\%  & 0.0\% \\
+Missing (NaN)    & 0.0\%  & 0.0\%  & 100.0\% & 100.0\% \\
+\hline
+\end{tabular}
+\end{table}
+
+% \subsection{Queries: three tiers of constraint}
+
+\subsection{Caption Synthesis}
+We synthesize structured free-text captions from CheXpert ~\cite{irvin2019chexpert} label columns to simulate
+clinical queries at training time:
+\begin{itemize}
+    \item \textbf{Single (50\%):} ``a chest X-ray with \textit{A}''
+    \item \textbf{Pair (25\%):} ``a chest X-ray with \textit{A} and \textit{B}''
+    \item \textbf{Negation (25\%):} ``a chest X-ray with \textit{A} and no \textit{B}'' (confirmed absent, not merely unmentioned)
+\end{itemize}
+\mk{merge the tables...}
 \begin{itemize}
     \item \textbf{Single-label:} one required finding (``a chest X-ray with edema'').
     \item \textbf{Conjunction:} two required findings (``edema and effusion'').
@@ -107,89 +295,252 @@ We use two metrics per query tier:
 \end{itemize}
 
 
+\subsection{Formulation of the Hard Negative Retrieval Rate (HNRR)}
+To explicitly quantify the severity of the affirmation bias during Tier 3 negation queries, the benchmark introduces the Hard Negative Retrieval Rate (HNRR). This novel metric tracks the precise proportion of retrieved images that directly violate the established negative constraint. For a query structured as ``Yes A, No B'', a Hard Negative is strictly defined as an retrieved image where both Pathology A and Pathology B are visually present (Positive).
+
+\begin{equation}
+HNRR@K = \frac{1}{K} \sum_{i=1}^{K} \mathbb{H}(i)
+\end{equation}
+
 \section{Method}
+
+\subsection{Label-Aware Contrastive Loss}
+
+Each training image carries a label vector $\mathbf{y}_i \in \{-1,0,1\}^L$, where
+$1$ = confirmed present, $-1$ = confirmed absent, and $0$ = unmentioned or uncertain.
+Let $\mathbf{z}_i^v, \mathbf{z}_i^t\in\mathbb{R}^d$ be the $\ell_2$-normalised image
+and text embeddings, and $\tau$ the learned logit scale.
+
+\paragraph{Label kernel.}
+We measure the semantic similarity of two samples by the dot product of their label
+vectors:
+\begin{equation}
+    K(i,j) = \mathbf{y}_i^\top\mathbf{y}_j
+    = \underbrace{|\{l:y_{il}=y_{jl}=1\}|}_{\text{shared positives}}
+    + \underbrace{|\{l:y_{il}=y_{jl}=-1\}|}_{\text{shared negatives}}
+    - \underbrace{|\{l:y_{il}{\cdot}y_{jl}=-1\}|}_{\text{conflicts}}.
+    \label{eq:kernel}
+\end{equation}
+$K(i,j)>0$ means the images agree on which findings are present and absent;
+$K(i,j)<0$ flags a clinical contradiction.
+We clamp $K(i,i)\leftarrow\max(K(i,i),1)$ so every image is always a positive for itself.
+
+\paragraph{Soft target and loss.}
+Negative-$K$ entries are zeroed and each row is normalised to form a target
+distribution:
+\begin{equation}
+    T_{ij} = \frac{\max(K(i,j),\,0)}{\sum_{k}\max(K(i,k),\,0)},
+    \label{eq:target}
+\end{equation}
+which is used as the target for the standard symmetric CLIP cross-entropy:
+\begin{equation}
+    \mathcal{L} = -\frac{1}{2B}\sum_{i}\Biggl[
+        \sum_{j} T_{ij}\log\frac{e^{\tau\langle\mathbf{z}_i^v,\mathbf{z}_j^t\rangle}}
+                                {\sum_{k}e^{\tau\langle\mathbf{z}_i^v,\mathbf{z}_k^t\rangle}}
+      + \sum_{j} T_{ji}\log\frac{e^{\tau\langle\mathbf{z}_i^t,\mathbf{z}_j^v\rangle}}
+                                {\sum_{k}e^{\tau\langle\mathbf{z}_i^t,\mathbf{z}_k^v\rangle}}
+    \Biggr].
+    \label{eq:loss}
+\end{equation}
+When $T$ is the identity this reduces to standard CLIP.
+Pairs with $T_{ij}>0$ attract in proportion to label agreement; pairs with $T_{ij}=0$
+are repelled via softmax competition, with clinically conflicting pairs acting as hard
+negatives.
+
+\paragraph{Treating unmentioned labels as missing.}
+Radiologists document only salient findings; $81\%$ of label slots in MIMIC-CXR are
+unmentioned.  Encoding these as absent ($-1$) would make nearly every batch pair
+appear to conflict --- an image with confirmed edema conflicts with any image that
+simply never mentions edema --- flooding $K$ with spurious negative signal.
+We therefore encode unmentioned labels as $0$, so only the $4.7\%$ of slots carrying
+a confirmed absence contribute to $K$, restricting repulsion to genuine clinical
+contradictions.
+
+
+\section{implementation details}
 
 \subsection{Architecture}
 Dual-encoder (ViT-B/32 vision + CLIP text encoder), fine-tuned via LoRA adapters on
 attention and MLP layers. Only $\sim$1.9\% of parameters are trainable; adapters are
 merged into base weights after training.
 
-\subsection{Caption Synthesis}
-We synthesize structured free-text captions from CheXpert label columns to simulate
-clinical queries at training time:
-\begin{itemize}
-    \item \textbf{Single (50\%):} ``a chest X-ray with \textit{A}'' — $A=1$
-    \item \textbf{Pair (25\%):} ``a chest X-ray with \textit{A} and \textit{B}'' — $A=1, B=1$
-    \item \textbf{Negation (25\%):} ``a chest X-ray with \textit{A} and no \textit{B}'' — $A=1, B=0$ (confirmed absent, not merely unmentioned)
-\end{itemize}
-This mirrors the three evaluation tiers directly, ensuring every query form seen at
-test time is also covered during training. Uncertain labels ($-1$) are excluded.
-
-\subsection{Label-Aware Contrastive Loss}
-
-Let $B$ be the batch size, $\mathbf{z}_i^v, \mathbf{z}_i^t \in \mathbb{R}^d$ the
-$\ell_2$-normalised image and text embeddings for sample $i$, and $\tau$ the learned
-logit scale.  Each sample carries a label vector $\mathbf{y}_i \in \{-1, 0, 1\}^L$
-where $1$ = pathology confirmed, $-1$ = explicitly ruled out (CSV~0), and $0$ =
-missing/uncertain (ignored).
-
-\paragraph{Image--text term.}
-We use the standard symmetric CLIP cross-entropy loss with a diagonal target:
-each image must rank its own paired caption above all others, and vice versa:
-\begin{equation}
-    \mathcal{L}_{\mathrm{it}}
-    = -\frac{1}{2B}\sum_{i=1}^{B}\Bigl[
-        \log\frac{e^{\tau\langle\mathbf{z}_i^v,\mathbf{z}_i^t\rangle}}
-                 {\sum_{j}e^{\tau\langle\mathbf{z}_i^v,\mathbf{z}_j^t\rangle}}
-      + \log\frac{e^{\tau\langle\mathbf{z}_i^v,\mathbf{z}_i^t\rangle}}
-                 {\sum_{j}e^{\tau\langle\mathbf{z}_j^v,\mathbf{z}_i^t\rangle}}
-      \Bigr].
-\end{equation}
-
-\paragraph{Image--image attraction.}
-Two images that share the same confirmed label value on any pathology should be close
-in embedding space, regardless of which caption each was paired with.  Define the
-\emph{attract} set:
-\begin{equation}
-    \mathcal{A} = \bigl\{(i,j) : i\neq j,\;
-        \exists\, l \text{ s.t. }
-        (y_{il}=y_{jl}=1) \;\text{or}\; (y_{il}=y_{jl}=-1)
-    \bigr\}.
-\end{equation}
-The attraction loss minimises the distance to a target cosine similarity of 1:
-\begin{equation}
-    \mathcal{L}_{\mathrm{attr}}
-    = \frac{1}{|\mathcal{A}|}\sum_{(i,j)\in\mathcal{A}}
-      \bigl(1 - \langle\mathbf{z}_i^v,\mathbf{z}_j^v\rangle\bigr).
-\end{equation}
-
-\paragraph{Image--image repulsion.}
-Two images that have \emph{conflicting} values for the same label (one positive, one
-negative) should be separated.  We consider only pairs that do not also share a
-matching label — attraction takes priority:
-\begin{equation}
-    \mathcal{C} = \bigl\{(i,j) : i\neq j,\;
-        \exists\, l \text{ s.t. }
-        y_{il} \cdot y_{jl} = -1
-    \bigr\} \setminus \mathcal{A}.
-\end{equation}
-The repulsion loss is a hinge on cosine similarity above margin $\tau_r$:
-\begin{equation}
-    \mathcal{L}_{\mathrm{rep}}
-    = \frac{1}{|\mathcal{C}|}\sum_{(i,j)\in\mathcal{C}}
-      \max\!\bigl(0,\;\langle\mathbf{z}_i^v,\mathbf{z}_j^v\rangle - \tau_r\bigr).
-\end{equation}
-
-\paragraph{Total loss.}
-\begin{equation}
-    \mathcal{L} = \mathcal{L}_{\mathrm{it}}
-                + \lambda_a\,\mathcal{L}_{\mathrm{attr}}
-                + \lambda_r\,\mathcal{L}_{\mathrm{rep}},
-\end{equation}
-where $\lambda_a$ and $\lambda_r$ are tunable weights.  Note that $\mathcal{L}_{\mathrm{attr}}$
-and $\mathcal{L}_{\mathrm{rep}}$ act \emph{only on image embeddings} — text embeddings
-receive gradient only from $\mathcal{L}_{\mathrm{it}}$.  This is intentional: query
-text at inference time is unseen, so we avoid entangling the text encoder with
-image-level co-occurrence patterns from the training set.
+\subsection{hyperparameters}
+loss, lora, hyper params etc. image size
 
 \section{Experiments \& Results}
+
+\subsection{Baseline Selection and Model Configuration}
+The evaluation protocol will benchmark the proposed architecture against the following foundational models:
+\begin{itemize}
+    \item \textbf{CLIP (OpenAI - Baseline):} Evaluated to demonstrate the fundamental, baseline capability of general-domain Vision-Language Pre-training.
+    \item \textbf{CXR-CLIP (State-of-the-Art Recall):} Serving as the primary benchmark representing the current state-of-the-art.
+    \item \textbf{Proposed Model (Neg-VLP):} The novel architecture detailed.
+\end{itemize}
+
+\subsection{Results-temp}
+
+\begin{table}[h]
+\centering
+\caption{Macro-averaged metrics on single label queries.}
+\label{tab:single_label_queries}
+  \resizebox{\linewidth}{!}{
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Model} & \textbf{P@1} & \textbf{P@5} & \textbf{P@10} & \textbf{R@1} & \textbf{R@5} & \textbf{R@10} \\
+\midrule
+\texttt{cxrclip}         & 0.600 & 0.560 & 0.480 & 0.001 & 0.007 & 0.011 \\
+\texttt{clip}      & 0.600 & 0.560 & 0.500 & 0.001 & 0.005 & 0.009 \\
+\texttt{ours} & 0.700 & 0.560 & 0.540 & 0.002 & 0.004 & 0.007 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Macro-averaged metrics on pair label queries.}
+\label{tab:pair_label_queries}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Model} & \textbf{P@1} & \textbf{P@5} & \textbf{P@10} & \textbf{R@1} & \textbf{R@5} & \textbf{R@10} \\
+\midrule
+\texttt{cxrclip}      & 0.178 & 0.093 & 0.102 & 0.005 & 0.008 & 0.014 \\
+\texttt{clip}   & 0.133 & 0.124 & 0.116 & 0.002 & 0.005 & 0.012 \\
+\texttt{ours} & 0.111 & 0.071 & 0.096 & 0.000 & 0.002 & 0.007 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Macro-averaged metrics on `yes A and no B' queries.}
+\label{tab:neg_queries}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Model} & \textbf{P@1} & \textbf{P@5} & \textbf{P@10} & \textbf{R@1} & \textbf{R@5} & \textbf{R@10} \\
+\midrule
+\texttt{cxrclip}         & 0.267 & 0.256 & 0.247 & 0.001 & 0.004 & 0.007 \\
+\texttt{clip}      & 0.200 & 0.196 & 0.196 & 0.001 & 0.003 & 0.005 \\
+\texttt{ours} & 0.589 & 0.458 & 0.434 & 0.002 & 0.004 & 0.008 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+
+
+%\begin{table*}[ht]
+% \centering
+% \caption{Anticipated Model Performance across MedRetrieval-Comp Tiers}
+% \begin{tabular}{lcccccc}
+% \toprule
+% \textbf{Architecture} & \textbf{Tier 1} & \textbf{Tier 1} & \textbf{Tier 2} & \textbf{Tier 2} & \textbf{Tier 3} & \textbf{Tier 3} \\
+% & \textbf{P@10} & \textbf{R@10} & \textbf{P@10} & \textbf{R@10} & \textbf{P@10} & \textbf{HNRR} \\
+% \midrule
+% OpenAI CLIP & 0.421 & 0.385 & 0.254 & 0.221 & 0.152 & 0.658 \\
+% MedCLIP & 0.685 & 0.722 & 0.451 & 0.505 & 0.287 & 0.584 \\
+% CXR-CLIP & 0.789 & 0.814 & 0.528 & 0.589 & 0.312 & 0.621 \\
+% \textbf{Proposed Neg-VLP} & \textbf{0.795} & \textbf{0.821} & \textbf{0.718} & \textbf{0.754} & \textbf{0.684} & \textbf{0.152} \\
+% \bottomrule
+% \end{tabular}
+% \end{table*}
+
+
+
+\subsection{Exhaustive Analysis of Tier 1 Performance (single-Pathology)}
+
+\subsection{Exhaustive Analysis of Tier 2 Performance (Multi-Pathology Conjunctive)}
+
+\subsection{Exhaustive Analysis of Tier 3 Performance (Negation and Affirmation Bias)}
+
+
+
+%\subsection{linguistic variation robustness}
+%% \mk{i think that for our first submission it's okay to ommit}
+% \subsection{Linguistic Variation and Dynamic Query Generation}
+% Linguistic Variation and Dynamic Query Generation: we did not do yet. should we? like do a slight domain shift analysis from training to testing?  train: edema and no effusion -> a scan with edema but has no effusion. 
+% we might need it for fair evaluation? maybe not?
+% do we want to enrich the queries for training as well?
+
+\subsection{ablation}
+ablation results
+
+\section{Discussion}
+The empirical evaluation of the models across the three distinct tiers of the MedRetrieval-Comp benchmark is projected to yield highly divergent performance profiles, fundamentally proving the necessity of the proposed architectural modifications.
+
+% \begin{table*}[ht]
+% \centering
+% \caption{Anticipated Model Performance across MedRetrieval-Comp Tiers}
+% \begin{tabular}{lcccccc}
+% \toprule
+% \textbf{Architecture} & \textbf{Tier 1} & \textbf{Tier 1} & \textbf{Tier 2} & \textbf{Tier 2} & \textbf{Tier 3} & \textbf{Tier 3} \\
+% & \textbf{P@10} & \textbf{R@10} & \textbf{P@10} & \textbf{R@10} & \textbf{P@10} & \textbf{HNRR} \\
+% \midrule
+% OpenAI CLIP & 0.421 & 0.385 & 0.254 & 0.221 & 0.152 & 0.658 \\
+% MedCLIP & 0.685 & 0.722 & 0.451 & 0.505 & 0.287 & 0.584 \\
+% CXR-CLIP & 0.789 & 0.814 & 0.528 & 0.589 & 0.312 & 0.621 \\
+% \textbf{Proposed Neg-VLP} & \textbf{0.795} & \textbf{0.821} & \textbf{0.718} & \textbf{0.754} & \textbf{0.684} & \textbf{0.152} \\
+% \bottomrule
+% \end{tabular}
+% \end{table*}
+
+
+
+% \subsection{Evaluation Metrics}
+
+% \textbf{Precision@K} measures the fraction of the top-$K$ retrieved images 
+% that satisfy all constraints of the query. 
+% Precision is our primary metric: in clinical retrieval, false positives 
+% in the top results directly waste reviewer time and corrupt any dataset 
+% assembled from the output.
+
+% \textbf{Recall@K} measures the fraction of all relevant images in the pool 
+% that appear within the top-$K$ results: basically means coverage, which is less relevant in retrieval for low ks or very common pathology queries. this is why recall is our secondary metric and not as important. we are not asking for coverage("find as many relevant items as possible")
+% we use it more for queries with low number of relevant results only.
+
+
+
+
+\section{Conclusion}
+
+% \begin{thebibliography}{99}
+% \bibitem{mimic} MIMIC-CXR Database v2.1.0 - PhysioNet, accessed May 14, 2026, \url{https://physionet.org/content/mimic-cxr/}
+% \bibitem{arxiv1} arXiv:2310.13292v1 [cs.CV] 20 Oct 2023, accessed May 14, 2026, \url{https://arxiv.org/pdf/2310.13292}
+% \bibitem{pmc1} Validation of a Deep Learning Chest X-ray Interpretation Model: Integrating Large-Scale AI and Large Language Models for Comparative Analysis with ChatGPT - PMC, accessed May 14, 2026, \url{https://pmc.ncbi.nlm.nih.gov/articles/PMC10795741/}
+% \bibitem{pmc2} Role of Model Size and Prompting Strategies in Extracting Labels from Free-Text Radiology Reports with Open-Source Large Language Models - PMC, accessed May 14, 2026, \url{https://pmc.ncbi.nlm.nih.gov/articles/PMC12920854/}
+% \bibitem{cad} CAD-Chest: Comprehensive Annotation of Diseases based on MIMIC-CXR Radiology Report v1.0 - PhysioNet, accessed May 14, 2026, \url{https://physionet.org/content/cad-chest/}
+% \bibitem{cxrclip1} [2310.13292] CXR-CLIP: Toward Large Scale Chest X-ray Language-Image Pre-training, accessed May 14, 2026, \url{https://arxiv.org/abs/2310.13292}
+% \bibitem{cxrclip2} CXR-CLIP: Toward Large Scale Chest X-ray Language-Image Pre-training - arXiv, accessed May 14, 2026, \url{https://arxiv.org/html/2310.13292v1}
+% \bibitem{cvf1} Vision-Language Models Do Not Understand ... - CVF Open Access, accessed May 14, 2026, \url{https://openaccess.thecvf.com/content/CVPR2025/papers/Alhamoud_Vision-Language_Models_Do_Not_Understand_Negation_CVPR_2025_paper.pdf}
+% \bibitem{mimicjpg} MIMIC-CXR-JPG - chest radiographs with structured labels v2.1.0 - PhysioNet, accessed May 14, 2026, \url{https://physionet.org/content/mimic-cxr-jpg/}
+% \bibitem{survey1} A Survey of Medical Vision-and-Language Applications and Their Techniques - arXiv, accessed May 14, 2026, \url{https://arxiv.org/html/2411.12195v1}
+% \bibitem{survey2} A Survey of Medical Vision-and-Language Applications and Their Techniques, accessed May 14, 2026, \url{https://www.researchgate.net/publication/385944770_A_Survey_of_Medical_Vision-and-Language_Applications_and_Their_Techniques}
+% \bibitem{benchmark1} [2501.09134] Benchmarking Robustness of Contrastive Learning Models for Medical Image-Report Retrieval - arXiv, accessed May 14, 2026, \url{https://arxiv.org/abs/2501.09134}
+% \bibitem{medmkg} MedMKG: Benchmarking Medical Knowledge Exploitation with Multimodal Knowledge Graph - arXiv, accessed May 14, 2026, \url{https://arxiv.org/html/2505.17214v1}
+% \bibitem{medclip} MedCLIP: Contrastive Learning from Unpaired Medical Images and Text - PMC, accessed May 14, 2026, \url{https://pmc.ncbi.nlm.nih.gov/articles/PMC11323634/}
+% \bibitem{medprob1} MedProbCLIP: Probabilistic Adaptation of Vision-Language Foundation Model for Reliable Radiograph-Report Retrieval - arXiv, accessed May 14, 2026, \url{https://arxiv.org/html/2602.16019v1}
+% \bibitem{medprob2} MedProbCLIP: Probabilistic Adaptation of Vision-Language Foundation Model for Reliable Radiograph-Report Retrieval, accessed May 14, 2026, \url{https://openaccess.thecvf.com/content/WACV2026W/LFMBio/papers/Elallaf_MedProbCLIP_Probabilistic_Adaptation_of_Vision-Language_Foundation_Model_for_Reliable_Radiograph-Report_WACVW_2026_paper.pdf}
+% \bibitem{vbl1} [2310.09291] Vision-by-Language for Training-Free Compositional Image Retrieval - arXiv, accessed May 14, 2026, \url{https://arxiv.org/abs/2310.09291}
+% \bibitem{vbl2} Vision-by-Language for Training-Free Compositional Image Retrieval - OpenReview, accessed May 14, 2026, \url{https://openreview.net/forum?id=EDPxCjXzSb}
+% \bibitem{cola} cola: A Benchmark for Compositional Text-to-image Retrieval, accessed May 14, 2026, \url{https://proceedings.neurips.cc/paper_files/paper/2023/file/917cd410aa55b61594fa2a6f6e5a9e94-Paper-Datasets_and_Benchmarks.pdf}
+% \bibitem{reddit} Questions regarding Image Retrieval Evaluation Metrics (Recall at K) and Predictions : r/computervision - Reddit, accessed May 14, 2026, \url{https://www.reddit.com/r/computervision/comments/10k0lw4/questions_regarding_image_retrieval_evaluation/}
+% \bibitem{resolution} Effect of image resolution on automated classification of chest X-rays - PMC, accessed May 14, 2026, \url{https://pmc.ncbi.nlm.nih.gov/articles/PMC10403240/}
+% \bibitem{retrieval} Retrieval-Based Chest X-Ray Report Generation Using a Pre-trained Contrastive Language-Image Model, accessed May 14, 2026, \url{https://proceedings.mlr.press/v158/endo21a/endo21a.pdf}
+% \bibitem{proxy} Multimorbidity Content-Based Medical Image Retrieval and Disease Recognition Using Multi-Label Proxy Metric Learning - IEEE Xplore, accessed May 14, 2026, \url{https://ieeexplore.ieee.org/iel7/6287639/10005208/10130284.pdf}
+% \bibitem{jmir} Automated Radiology Report Labeling in Chest X-Ray Pathologies: Development and Evaluation of a Large Language Model Framework - JMIR Medical Informatics, accessed May 14, 2026, \url{https://medinform.jmir.org/2025/1/e68618/PDF}
+% \bibitem{miccai} CXR-CLIP: Toward Large Scale Chest X-ray Language-Image Pre-training | MICCAI 2023, accessed May 14, 2026, \url{https://conferences.miccai.org/2023/papers/161-Paper2090.html}
+% \bibitem{robust} Benchmarking Robustness of Contrastive Learning Models for Medical Image-Report Retrieval - arXiv, accessed May 14, 2026, \url{https://arxiv.org/html/2501.09134v1}
+% \bibitem{medbind} MEDBind: Unifying Language and Multimodal Medical Data Embeddings - arXiv, accessed May 14, 2026, \url{https://arxiv.org/html/2403.12894v1}
+% \end{thebibliography}
+
+{
+    \small
+    \bibliographystyle{ieeenat_fullname}
+    \bibliography{main}
+}
+
+
+
+
+\end{document}

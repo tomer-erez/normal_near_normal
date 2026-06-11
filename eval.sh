@@ -1,6 +1,6 @@
 #!/bin/bash
 
-name="graded_vs_not"
+name="a"
 set -e
 cd "$(dirname "$0")"
 source ~/miniconda3/etc/profile.d/conda.sh

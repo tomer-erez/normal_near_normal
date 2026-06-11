@@ -2,19 +2,23 @@
 Run retrieval evaluation for all models sequentially, then summarize results
 into comparison tables and plots.
 
-Query modes (--query_mode, default: all)
-  single    13 queries — "atelectasis"         relevant: label==1
-  pair      78 queries — "atelectasis and edema" relevant: both labels==1
-  negative 156 queries — "atelectasis and no cardiomegaly"
-                          relevant: pos label==1 AND neg label==0
-  all       all 247 queries
+Query types evaluated
+  single           13 queries — "atelectasis"           relevant: label==1
+  pair             78 queries — "atelectasis and edema"  relevant: both labels==1
+  negative_nan    156 queries — "atelectasis and no X"  relevant: pos==1 AND neg∈{0,NaN}
+  negative_strict 156 queries — same queries, stricter:  relevant: pos==1 AND neg==0 only
+
+For each model two eval passes are run automatically:
+  pass 1 (nan_mode=negative): covers single, pair, negative_nan
+  pass 2 (nan_mode=ignore):   covers negative_strict
 
 Output files (in --output_dir):
-  summary_single.csv    P@k / R@k per model, single-label queries
-  summary_pair.csv      P@k / R@k per model, pair queries
-  summary_negative.csv  P@k / R@k per model, negative queries (if run)
-  summary_macro.csv     macro-averaged metrics per model (one row per model)
-  plots/                comparison charts + per-model 13×13 heatmaps
+  summary_single.csv          P@k / R@k per model, single-label queries
+  summary_pair.csv            P@k / R@k per model, pair queries
+  summary_negative_nan.csv    P@k / R@k per model, negative queries (NaN=absent)
+  summary_negative_strict.csv P@k / R@k per model, negative queries (NaN=ignored)
+  summary_macro.csv           macro-averaged metrics per model (one row per model)
+  plots/                      comparison charts + per-model 13×13 heatmaps
 
 Usage
 -----
@@ -95,193 +99,7 @@ MODELS = [
         "finetuned_pretrained": "",
         "finetuned_checkpoint": "experiments/_vanilla_bsz16x8/final_merged.pt",
     },
-    #     {
-    #     "name": "vanilla_siglip_loss",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/_vanilla_bsz16x8_with_siglip/final_merged.pt",
-    # },
-    #         {
-    #     "name": "ft_swint_siglip_loss",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/fine_tuned_cxr_and_siglip/final_merged.pt",
-    # },
-    #             {
-    #     "name": "ft_swint_clip_loss",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/fine_tuned_cxr_and_cliploss/final_merged.pt",
-    # },
 
-    #     {
-    #     "name": "negawareclip_01",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/negawareclip_01/final_merged.pt",
-    # },
-
-    #         {
-    #     "name": "negawareclip_05",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/negawareclip_05/final_merged.pt",
-    # },
-
-    #         {
-    #     "name": "negawaresiglip_01",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/negawaresiglip_01/final_merged.pt",
-    # },
-
-    #         {
-    #     "name": "negawaresiglip_05",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/negawaresiglip_05/final_merged.pt",
-    # },
-
-    #         {
-    #     "name": "r32a32",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/r32a32/final_merged.pt",
-    # },
-
-    #             {
-    #     "name": "r32a64",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/r32a64/final_merged.pt",
-    # },
-
-    #                 {
-    #     "name": "r64a64",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/r64a64/final_merged.pt",
-    # },
-
-    #                     {
-    #     "name": "r100a100",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/r100a100/final_merged.pt",
-    # },
-
-    #                     {
-    #     "name": "vit_l_14",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-L-14",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/vit_l_14/final_merged.pt",
-    # },
-
-    #                         {
-    #     "name": "vitb32_cliploss_negaware_bs32_no_conflict_zeriong_version",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/vitb32_cliploss_negaware_bs32_no_conflict_zeriong_version/final_merged.pt",
-    # },
-
-    #                         {
-    #     "name": "vitb32_sigliploss_negaware_bs32_no_conflict_zeriong_version",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/vitb32_sigliploss_negaware_bs32_no_conflict_zeriong_version/final_merged.pt",
-    # },
-
-    #                             {
-    #     "name": "mode_ignore_nan_negaware",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/vitb32_cliploss_negaware_nanmode_ignore/final_merged.pt",
-    # },
-
-    #                                 {
-    #     "name": "fixed_negaware_005",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/fixed_negaware_005/final_merged.pt",
-    # },
-    
-    # {
-    #     "name": "fixed_negaware_015",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/fixed_negaware_015/final_merged.pt",    
-    #     },
-    
-    # {
-    #     "name": "fixed_negaware_035",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/fixed_negaware_035/final_merged.pt",
-    # },
-
-    #     {
-    #     "name": "fixed_negaware_055",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/fixed_negaware_055/final_merged.pt",
-    # },
-
-    #     {
-    #     "name": "fixed_negaware_075",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/fixed_negaware_075/final_merged.pt",
-    # },
-
-    #     {
-    #     "name": "fixed_negaware_105",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/fixed_negaware_105/final_merged.pt",
-    # },
-    
     
             {
         "name": "caption_mode_all_clip",
@@ -291,133 +109,60 @@ MODELS = [
         "finetuned_pretrained": "",
         "finetuned_checkpoint": "experiments/caption_mode_all_clip/final_merged.pt",
     },
-    #             {
-    #     "name": "caption_mode_all_sglip",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/caption_mode_all_sglip/final_merged.pt",
-    # },
-                
-    #                             {
-    #     "name": "clip_new_nanmode_ignore_matchmode_singlelabel",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/clip_new_nanmode_ignore_matchmode_singlelabel/final_merged.pt",
-    # },
-               
-    #                                            {
-    #     "name": "clip_w025_margin20_negative_aware",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/clip_w025_margin20_negative_aware/final_merged.pt",
-    # }, 
-                                               
-    #                                                                                           {
-    #     "name": "siglip_new_nanmode_ignore_matchmode_singlelabel",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/siglip_new_nanmode_ignore_matchmode_singlelabel/final_merged.pt",
-    # },    
+
     
-        #
+    
+                                                                    {
+        "name": "att001_rep001",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/att001_rep001/final_merged.pt",
+    },   
+    
+    
     # {
-    #     "name": "siglip_matchmode_graded_captionmode_all_10labels",
+    #     "name": "label_dot_cliploss",
     #     "model_type": "finetuned",
     #     "checkpoint": None,
     #     "finetuned_base_model": "ViT-B-32",
     #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/siglip_matchmode_graded_captionmode_all_10labels/final_merged.pt",
+    #     "finetuned_checkpoint": "experiments/label_dot_cliploss/final_merged.pt",
     # },   
-    
+                                                                        
+    # {
+    #     "name": "label_dot_sigliploss",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/label_dot_sigliploss/final_merged.pt",
+    # },   
     
     #     {
-    #     "name": "biomedclip_matchmode_graded_captionmode_all_10labels",
+    #     "name": "claude_hyperparms_label_dot_clip",
     #     "model_type": "finetuned",
     #     "checkpoint": None,
     #     "finetuned_base_model": "ViT-B-32",
     #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/biomedclip_matchmode_graded_captionmode_all_10labels/final_merged.pt",
+    #     "finetuned_checkpoint": "experiments/claude_hyperparms_label_dot_clip/final_merged.pt",
     # },   
-        
-    #             {
-    #     "name": "clip_matchmode_graded_captionmode_all_10labels",
+                                                                        
+    # {
+    #     "name": "claude_hyperparms_label_dot_clip_r32_a32",
     #     "model_type": "finetuned",
     #     "checkpoint": None,
     #     "finetuned_base_model": "ViT-B-32",
     #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/clip_matchmode_graded_captionmode_all_10labels/final_merged.pt",
+    #     "finetuned_checkpoint": "experiments/claude_hyperparms_label_dot_clip_r32_a32/final_merged.pt",
     # },   
-                
-    #                             {
-    #     "name": "clip_matchmode_single_label_captionmode_all_10labels",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/clip_matchmode_single_label_captionmode_all_10labels/final_merged.pt",
-    # },   
-                                
-    #                                                             {
-    #     "name": "siglip_matchmode_single_label_captionmode_all_10labels",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/siglip_matchmode_single_label_captionmode_all_10labels/final_merged.pt",
-    # },   
-    
-    
-                                                                    {
-        "name": "siglip_matchmode_single_label_captionmode_all_10labels",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/siglip_matchmode_single_label_captionmode_all_10labels/final_merged.pt",
-    },   
-    
-    
-                                                                    {
-        "name": "siglip_matchmode_single_label_captionmode_all_10labels",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/siglip_matchmode_single_label_captionmode_all_10labels/final_merged.pt",
-    },   
-    
-    
-                                                                    {
-        "name": "siglip_matchmode_single_label_captionmode_all_10labels",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/siglip_matchmode_single_label_captionmode_all_10labels/final_merged.pt",
-    },   
-    
-    
-                                                                    {
-        "name": "siglip_matchmode_single_label_captionmode_all_10labels",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/siglip_matchmode_single_label_captionmode_all_10labels/final_merged.pt",
-    },   
         
 ]
 
 KS = [1, 5, 10]
 METRIC_COLS = [f"P@{k}" for k in KS] + [f"R@{k}" for k in KS]
+HNRR_COLS  = [f"HNRR@{k}" for k in KS]   # only meaningful for negative query types
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -431,9 +176,23 @@ def results_path(model: dict) -> Path:
     return REPO_ROOT / f"results_{model['model_type']}.csv"
 
 
+def results_strict_path(model: dict) -> Path:
+    """Repo-root path for the nan_mode=ignore (negative_strict) results."""
+    base = results_path(model)
+    return base.with_name(base.stem + "_neg_strict.csv")
+
+
+def results_robust_path(model: dict, nan_mode: str) -> Path:
+    """Repo-root path for linguistic robustness results."""
+    base = results_path(model)
+    suffix = "_robust_nan" if nan_mode == "negative" else "_robust_strict"
+    return base.with_name(base.stem + suffix + ".csv")
+
+
 def run_eval(model: dict, paired_dir: str, csv: str,
              query_mode: str = "all", batch_size: int = 64,
-             max_samples: int | None = None, nan_mode: str = "negative") -> Path:
+             max_samples: int | None = None, nan_mode: str = "negative",
+             neg_template: str | None = None) -> Path:
     """Run eval_model.py for one model. Returns path to results CSV."""
     cmd = [
         sys.executable, str(REPO_ROOT / "baseline_eval" / "eval_model.py"),
@@ -445,6 +204,8 @@ def run_eval(model: dict, paired_dir: str, csv: str,
         "--batch_size", str(batch_size),
         "--nan-mode", nan_mode,
     ]
+    if neg_template is not None:
+        cmd += ["--neg-template", neg_template]
     if max_samples is not None:
         cmd += ["--max_samples", str(max_samples)]
     if model.get("checkpoint"):
@@ -495,12 +256,19 @@ def build_macro_summary(all_results: dict[str, pd.DataFrame]) -> pd.DataFrame:
     rows = []
     for model_name, df in all_results.items():
         row = {"model": model_name}
-        for qtype in ["single", "pair", "negative"]:
+        for qtype in ["single", "pair", "negative_nan", "negative_strict",
+                      "negative_robust_nan", "negative_robust_strict"]:
             if qtype not in df["type"].values:
                 continue
             subset = df[(df["type"] == qtype) & (df["n_relevant"] > 0)]
             for col in METRIC_COLS:
                 row[f"{qtype}_{col}"] = subset[col].mean()
+            # HNRR: averaged over all negative queries (regardless of n_relevant)
+            if qtype.startswith("negative"):
+                neg_subset = df[df["type"] == qtype]
+                for col in HNRR_COLS:
+                    if col in neg_subset.columns:
+                        row[f"{qtype}_{col}"] = neg_subset[col].mean()
         rows.append(row)
     return pd.DataFrame(rows)
 
@@ -644,10 +412,18 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
         plt.close(fig)
         log.info(f"Saved → {path}")
 
-    # ── 5. Negative mode: macro bar chart ─────────────────────────────────────
-    if "negative" in qtypes_present:
+    # ── 5. Negative mode: macro bar charts (one per negative variant) ──────────
+    neg_variants = [
+        ("negative_nan",          "NaN counts as absent  (lenient)"),
+        ("negative_strict",       "NaN ignored — only explicit 0  (strict)"),
+        ("negative_robust_nan",   "Rephrased query — NaN absent  (robustness)"),
+        ("negative_robust_strict","Rephrased query — NaN ignored  (robustness strict)"),
+    ]
+    for neg_qtype, neg_subtitle in neg_variants:
+        if neg_qtype not in qtypes_present:
+            continue
         fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-        fig.suptitle("Macro-averaged metrics — 'yes A and no B' queries", fontsize=13)
+        fig.suptitle(f"Macro-averaged metrics — 'yes A and no B' queries\n{neg_subtitle}", fontsize=13)
         x = np.arange(len(model_names))
         width = 0.25
         for ax, prefix, metrics in [
@@ -657,7 +433,7 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
             all_metric_vals = []
             per_metric = []
             for metric in metrics:
-                col = f"negative_{metric}"
+                col = f"{neg_qtype}_{metric}"
                 vals = [
                     macro_summary.loc[macro_summary["model"] == m, col].values[0]
                     if col in macro_summary.columns else 0.0
@@ -683,26 +459,79 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
             ax.legend(fontsize=9)
             ax.grid(axis="y", alpha=0.3)
         plt.tight_layout()
-        path = plots_dir / "macro_bar_negative.png"
+        path = plots_dir / f"macro_bar_{neg_qtype}.png"
         fig.savefig(path, dpi=150)
         plt.close(fig)
         log.info(f"Saved → {path}")
 
-    # ── 6. Negative mode: 13×13 heatmap per model ─────────────────────────────
-    # Rows = positive label required, columns = label that must be absent.
-    # Cell value = P@10 (NaN if query had n_relevant=0 or doesn't exist).
-    if "negative" in qtypes_present:
+    # ── 6. HNRR bar chart (one per negative variant) ──────────────────────────
+    for neg_qtype, neg_subtitle in neg_variants:
+        if neg_qtype not in qtypes_present:
+            continue
+        hnrr_cols = [f"{neg_qtype}_{c}" for c in HNRR_COLS]
+        available = [c for c in hnrr_cols if c in macro_summary.columns]
+        if not available:
+            continue
+        fig, ax = plt.subplots(figsize=(12, 5))
+        fig.suptitle(f"HNRR — hard negatives in top-k ('yes A and no B' queries)\n{neg_subtitle}", fontsize=13)
+        x = np.arange(len(model_names))
+        width = 0.25
+        all_vals = []
+        per_metric = []
+        for col in available:
+            metric = col.replace(f"{neg_qtype}_", "")
+            vals = [
+                macro_summary.loc[macro_summary["model"] == m, col].values[0]
+                if col in macro_summary.columns else float("nan")
+                for m in model_names
+            ]
+            per_metric.append((metric, vals))
+            all_vals.extend(vals)
+        finite = [v for v in all_vals if not np.isnan(v)]
+        hi = max(finite) if finite else 1.0
+        ylim_top = min(1.0, hi * 1.4)
+        ax.set_ylim(0, ylim_top)
+        label_pad = ylim_top * 0.02
+        for i, (metric, vals) in enumerate(per_metric):
+            bars = ax.bar(x + i * width, vals, width, label=metric)
+            for bar, val in zip(bars, vals):
+                if np.isnan(val):
+                    continue
+                text_y = min(bar.get_height() + label_pad, ylim_top * 0.97)
+                ax.text(bar.get_x() + bar.get_width() / 2, text_y,
+                        f"{val:.3f}", ha="center", va="bottom", fontsize=7)
+        ax.set_xticks(x + width)
+        ax.set_xticklabels(short_names, rotation=30, ha="right", fontsize=9)
+        ax.set_ylabel("HNRR @ k  (lower is better)")
+        ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.3f"))
+        ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=6, prune="both"))
+        ax.legend(fontsize=9)
+        ax.grid(axis="y", alpha=0.3)
+        plt.tight_layout()
+        path = plots_dir / f"hnrr_bar_{neg_qtype}.png"
+        fig.savefig(path, dpi=150)
+        plt.close(fig)
+        log.info(f"Saved → {path}")
+
+    # ── 7. Negative mode: 13×13 heatmap per model (both variants) ─────────────
+    for neg_qtype, neg_subtitle in neg_variants:
+        if neg_qtype not in qtypes_present:
+            continue
         n = len(CHEXPERT_LABELS)
         for m, short in zip(model_names, short_names):
             df = all_results[m]
-            neg_df = df[(df["type"] == "negative") & df["pos_labels"].notna() & df["neg_labels"].notna()]
+            neg_df = df[
+                (df["type"] == neg_qtype)
+                & df["pos_labels"].notna()
+                & df["neg_labels"].notna()
+            ]
             if neg_df.empty:
                 continue
 
             matrix = np.full((n, n), np.nan)
             for _, row in neg_df.iterrows():
-                pos_col = row["pos_labels"]   # e.g. "chexpert_Atelectasis"
-                neg_col = row["neg_labels"]   # e.g. "chexpert_Cardiomegaly"
+                pos_col = row["pos_labels"]
+                neg_col = row["neg_labels"]
                 i = LABEL_TO_IDX.get(pos_col)
                 j = LABEL_TO_IDX.get(neg_col)
                 if i is not None and j is not None and row["n_relevant"] > 0:
@@ -720,15 +549,15 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
                 ax=ax,
             )
             ax.set_title(
-                f"P@10 — 'yes [row] and no [col]' queries\nModel: {short}",
+                f"P@10 — 'yes [row] and no [col]' queries\nModel: {short}  |  {neg_subtitle}",
                 fontsize=12, pad=12,
             )
-            ax.set_xlabel("Negated label  (must NOT be present / label=0)", fontsize=10)
-            ax.set_ylabel("Positive label  (must be present / label=1)", fontsize=10)
+            ax.set_xlabel("Negated label  (must NOT be present)", fontsize=10)
+            ax.set_ylabel("Positive label  (must be present)", fontsize=10)
             plt.xticks(rotation=40, ha="right", fontsize=8)
             plt.yticks(rotation=0, fontsize=8)
             plt.tight_layout()
-            path = plots_dir / f"neg_heatmap_P10_{short}.png"
+            path = plots_dir / f"neg_heatmap_P10_{neg_qtype}_{short}.png"
             fig.savefig(path, dpi=150)
             plt.close(fig)
             log.info(f"Saved → {path}")
@@ -754,7 +583,8 @@ def make_table_plots(macro_summary: pd.DataFrame, plots_dir: Path):
     BEST_BG  = "#c8f0d0"   # soft green for best-in-column
     ROW_LBL  = "#dce3ea"   # muted blue-grey for row-label column
 
-    for qtype in ["single", "pair", "negative"]:
+    for qtype in ["single", "pair", "negative_nan", "negative_strict",
+                  "negative_robust_nan", "negative_robust_strict"]:
         cols = [f"{qtype}_{m}" for m in METRIC_COLS]
         available = [c for c in cols if c in macro_summary.columns]
         if not available:
@@ -854,10 +684,6 @@ def main():
                         help="Skip models whose results CSV already exists")
     parser.add_argument("--batch_size", type=int, default=64,
                         help="Batch size for image and text encoding (default: 64)")
-    parser.add_argument("--nan-mode", default="negative", choices=["negative", "ignore"],
-                        help="How to treat NaN labels in negative-query relevance. "
-                             "'negative' (default): NaN counts as absent (same as CSV 0). "
-                             "'ignore': only CSV 0 counts as absent; NaN images are excluded.")
     parser.add_argument("--wandb-project", default=None,
                         help="W&B project name. Omit to disable W&B logging.")
     parser.add_argument("--wandb-run-name", default=None,
@@ -870,47 +696,117 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # ── Run evaluations ───────────────────────────────────────────────────────
+    # Two passes per model:
+    #   pass 1 (nan_mode=negative): single + pair + negative  → type renamed "negative_nan"
+    #   pass 2 (nan_mode=ignore):   negative only             → type renamed "negative_strict"
     all_results = {}
     for i, model in enumerate(MODELS):
         print("\n" + "=" * 80)
         log.info(f"Evaluating model {i+1}/{len(MODELS)}: {model['name']}")
-        out_path = output_dir / results_path(model).name
 
-        if args.skip_existing and out_path.exists():
-            log.info(f"Skipping {model['name']} — results already exist at {out_path}")
-        else:
-            checkpoint_file = CHECKPOINTS_DIR / model["checkpoint"] if model["checkpoint"] else None
-            if model["checkpoint"] and not checkpoint_file.exists():
-                log.warning(f"Checkpoint not found, skipping {model['name']}: {checkpoint_file}")
+        out_path        = output_dir / results_path(model).name
+        out_path_strict = output_dir / results_strict_path(model).name
+
+        # ── guard: skip missing checkpoints ───────────────────────────────────
+        checkpoint_file = CHECKPOINTS_DIR / model["checkpoint"] if model["checkpoint"] else None
+        if model["checkpoint"] and not checkpoint_file.exists():
+            log.warning(f"Checkpoint not found, skipping {model['name']}: {checkpoint_file}")
+            continue
+        if model["model_type"] == "finetuned":
+            ft_ckpt = REPO_ROOT / model["finetuned_checkpoint"]
+            if not ft_ckpt.exists():
+                log.warning(f"Finetuned checkpoint not found, skipping {model['name']}: {ft_ckpt}")
                 continue
-            if model["model_type"] == "finetuned":
-                ft_ckpt = REPO_ROOT / model["finetuned_checkpoint"]
-                if not ft_ckpt.exists():
-                    log.warning(f"Finetuned checkpoint not found, skipping {model['name']}: {ft_ckpt}")
-                    continue
-            if model["model_type"] == "cxrclip_hybrid":
-                merged_ckpt = REPO_ROOT / model["hybrid_merged_checkpoint"]
-                if not merged_ckpt.exists():
-                    log.warning(f"Hybrid checkpoint not found, skipping {model['name']}: {merged_ckpt}")
-                    continue
+        if model["model_type"] == "cxrclip_hybrid":
+            merged_ckpt = REPO_ROOT / model["hybrid_merged_checkpoint"]
+            if not merged_ckpt.exists():
+                log.warning(f"Hybrid checkpoint not found, skipping {model['name']}: {merged_ckpt}")
+                continue
+
+        # ── pass 1: all queries, NaN = absent ─────────────────────────────────
+        if args.skip_existing and out_path.exists():
+            log.info(f"  [pass 1] Skipping — {out_path.name} already exists")
+        else:
             try:
                 raw_path = run_eval(
                     model, args.paired_dir, args.csv,
                     query_mode=args.query_mode,
                     batch_size=args.batch_size,
                     max_samples=args.max_samples,
-                    nan_mode=args.nan_mode,
+                    nan_mode="negative",
                 )
                 if raw_path.exists() and raw_path != out_path:
-                    shutil.move(str(raw_path), out_path)  # rename fails cross-filesystem
+                    shutil.move(str(raw_path), out_path)
             except Exception as e:
-                log.error(f"Failed to evaluate {model['name']}: {e}")
+                log.error(f"  [pass 1] Failed for {model['name']}: {e}")
                 continue
 
-        if out_path.exists():
-            all_results[model["name"]] = pd.read_csv(out_path)
+        # ── pass 2: negative queries only, NaN = ignored ──────────────────────
+        neg_qmode = "negative" if args.query_mode in ("all", "negative") else None
+        if neg_qmode is None:
+            log.info(f"  [pass 2] Skipping negative_strict (query_mode={args.query_mode})")
+        elif args.skip_existing and out_path_strict.exists():
+            log.info(f"  [pass 2] Skipping — {out_path_strict.name} already exists")
         else:
-            log.warning(f"No results file found for {model['name']}, skipping from summary")
+            try:
+                raw_path_strict = run_eval(
+                    model, args.paired_dir, args.csv,
+                    query_mode="negative",
+                    batch_size=args.batch_size,
+                    max_samples=args.max_samples,
+                    nan_mode="ignore",
+                )
+                if raw_path_strict.exists() and raw_path_strict != out_path_strict:
+                    shutil.move(str(raw_path_strict), out_path_strict)
+            except Exception as e:
+                log.error(f"  [pass 2] Failed for {model['name']}: {e}")
+
+        # ── pass 3 & 4: linguistic robustness (rephrased negative queries) ───────
+        if args.query_mode in ("all", "negative"):
+            from baseline_eval.eval_model import NEG_TEMPLATE_ROBUST
+            for rob_nan_mode, rob_type in [("negative", "negative_robust_nan"),
+                                           ("ignore",   "negative_robust_strict")]:
+                rob_path = output_dir / results_robust_path(model, rob_nan_mode).name
+                if args.skip_existing and rob_path.exists():
+                    log.info(f"  [robust {rob_nan_mode}] Skipping — {rob_path.name} already exists")
+                else:
+                    try:
+                        raw_rob = run_eval(
+                            model, args.paired_dir, args.csv,
+                            query_mode="negative",
+                            batch_size=args.batch_size,
+                            max_samples=args.max_samples,
+                            nan_mode=rob_nan_mode,
+                            neg_template=NEG_TEMPLATE_ROBUST,
+                        )
+                        if raw_rob.exists() and raw_rob != rob_path:
+                            shutil.move(str(raw_rob), rob_path)
+                    except Exception as e:
+                        log.error(f"  [robust {rob_nan_mode}] Failed for {model['name']}: {e}")
+
+        # ── merge results ──────────────────────────────────────────────────────
+        if not out_path.exists():
+            log.warning(f"No results file for {model['name']}, skipping from summary")
+            continue
+
+        df_main = pd.read_csv(out_path)
+        df_main.loc[df_main["type"] == "negative", "type"] = "negative_nan"
+
+        frames = [df_main]
+        if out_path_strict.exists():
+            df_strict = pd.read_csv(out_path_strict)
+            df_strict.loc[df_strict["type"] == "negative", "type"] = "negative_strict"
+            frames.append(df_strict)
+
+        for rob_nan_mode, rob_type in [("negative", "negative_robust_nan"),
+                                       ("ignore",   "negative_robust_strict")]:
+            rob_path = output_dir / results_robust_path(model, rob_nan_mode).name
+            if rob_path.exists():
+                df_rob = pd.read_csv(rob_path)
+                df_rob.loc[df_rob["type"] == "negative", "type"] = rob_type
+                frames.append(df_rob)
+
+        all_results[model["name"]] = pd.concat(frames, ignore_index=True)
 
     if not all_results:
         log.error("No results to summarize.")
@@ -921,8 +817,11 @@ def main():
     # ── Build and save per-type summaries ────────────────────────────────────
     qtypes_present = {qt for df in all_results.values() for qt in df["type"].unique()}
 
+    ALL_QTYPES = ["single", "pair", "negative_nan", "negative_strict",
+                  "negative_robust_nan", "negative_robust_strict"]
+
     summary_paths = {}
-    for qtype in ["single", "pair", "negative"]:
+    for qtype in ALL_QTYPES:
         if qtype not in qtypes_present:
             continue
         try:
@@ -972,8 +871,9 @@ def main():
         log.info("W&B eval run finished.")
 
     # ── Print macro summary tables ────────────────────────────────────────────
-    for qtype in ["single", "pair", "negative"]:
-        cols = [f"{qtype}_{c}" for c in METRIC_COLS]
+    for qtype in ALL_QTYPES:
+        extra = HNRR_COLS if qtype.startswith("negative") else []
+        cols = [f"{qtype}_{c}" for c in METRIC_COLS + extra]
         available = [c for c in cols if c in macro_summary.columns]
         if not available:
             continue

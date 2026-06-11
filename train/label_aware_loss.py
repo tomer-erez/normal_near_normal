@@ -36,6 +36,43 @@ MATCHING MODES  (--match-mode)
                   pathology (one report says "Edema present", the other says
                   "No edema").  Those pairs are pushed apart with a hinge loss.
 
+  signed_kernel   Unified signed label kernel:
+
+                    K(i,j) = shared_pos(i,j) − α · conflicts(i,j)
+
+                  where shared_pos counts labels where both samples have 1.0,
+                  and conflicts counts labels where one has 1.0 and the other
+                  has -1.0.  The soft target is max(0, K) / row_sum — so pairs
+                  with more agreement than conflict attract (proportionally),
+                  and pairs with net conflict get zero target weight and act as
+                  hard negatives in the softmax.  α is --kernel-alpha (default 1).
+                  Degenerates to graded when α=0.
+
+  label_dot       Label dot-product kernel (recommended):
+
+                    K(i,j) = l_i · l_j   where l ∈ {−1, 0, 1}
+                           = shared_pos + shared_neg − conflicts
+
+                  shared_pos: both samples have label=1.0 for the same finding.
+                  shared_neg: both samples have label=−1.0 for the same finding
+                              (both EXPLICITLY rule out the finding).
+                  conflicts:  one has 1.0 and the other has −1.0.
+
+                  The target is max(0, K) / row_sum (same as signed_kernel).
+                  The diagonal K(i,i) = ||l_i||² = number of explicitly-stated
+                  labels, so samples with richer label profiles attract more
+                  strongly.
+
+                  MUST use --nan-mode ignore: with nan_mode=negative, every
+                  NaN label becomes −1 and shared_neg swamps the signal.
+
+                  Advantages over signed_kernel:
+                    - "yes A and no B" query vs exact-match image: K=2 (both
+                      agree on A present AND B absent) vs K=1 in signed_kernel.
+                    - Pair query "A and B" vs image with both: K=2 vs image
+                      with only one label: K=1 — graded pair attraction.
+                    - Zero extra hyperparameters.
+
 LOSS VARIANTS  (--loss)
 -----------------------
   clip    Multi-positive softmax cross-entropy (LabelAwareClipLoss).
@@ -99,15 +136,17 @@ class LabelAwareClipLoss(nn.Module):
         match_mode: str = "single_label",
         neg_weight: float = 0.5,
         neg_margin: float = 0.0,
+        kernel_alpha: float = 1.0,
     ):
         super().__init__()
-        assert match_mode in ("single_label", "two_label", "negative_aware", "graded"), match_mode
+        assert match_mode in ("single_label", "two_label", "negative_aware", "graded", "signed_kernel", "label_dot"), match_mode
         self.match_mode = match_mode
         self.neg_weight = neg_weight
         self.neg_margin = neg_margin
+        self.kernel_alpha = kernel_alpha
         # How many shared POSITIVE labels are required for a pair to count as positive.
         # two_label requires ≥2; everything else (single_label, negative_aware) requires ≥1.
-        # graded does not use a threshold — it uses raw shared counts as soft weights.
+        # graded/signed_kernel/label_dot do not use a threshold — they use soft weights.
         self._pos_threshold = 2 if match_mode == "two_label" else 1
 
     # ------------------------------------------------------------------
@@ -201,6 +240,37 @@ class LabelAwareClipLoss(nn.Module):
             conflict = ((pos @ neg.T) + (neg @ pos.T)) > 0
             conflict = conflict & (shared_pos == 0)
             conflict.fill_diagonal_(False)
+            row_sums = target.sum(dim=1, keepdim=True).clamp(min=1.0)
+            return target / row_sums, conflict
+
+        if self.match_mode == "signed_kernel":
+            # Signed kernel: K(i,j) = shared_pos - alpha * conflicts
+            # Pairs where agreement > conflict attract (weight ∝ K).
+            # Pairs where conflict > agreement get K < 0 → zero target weight,
+            # so they land in the softmax denominator as hard negatives.
+            conflicts = (pos @ neg.T) + (neg @ pos.T)       # (B, B) int
+            K = shared_pos.float() - self.kernel_alpha * conflicts.float()
+            B = labels.shape[0]
+            diag_idx = torch.arange(B, device=labels.device)
+            K[diag_idx, diag_idx] = K[diag_idx, diag_idx].clamp(min=1.0)
+            conflict = K < 0
+            conflict.fill_diagonal_(False)
+            target = K.clamp(min=0.0)
+            row_sums = target.sum(dim=1, keepdim=True).clamp(min=1.0)
+            return target / row_sums, conflict
+
+        if self.match_mode == "label_dot":
+            # Label dot-product: K(i,j) = l_i · l_j  (l ∈ {-1, 0, 1})
+            #   = shared_pos + shared_neg - conflicts
+            # Requires --nan-mode ignore so 0 means "unmentioned", not absent.
+            # Diagonal K(i,i) = ||l_i||² = # explicitly-stated labels.
+            K = labels @ labels.T                            # (B, B) float
+            B = labels.shape[0]
+            diag_idx = torch.arange(B, device=labels.device)
+            K[diag_idx, diag_idx] = K[diag_idx, diag_idx].clamp(min=1.0)
+            conflict = K < 0
+            conflict.fill_diagonal_(False)
+            target = K.clamp(min=0.0)
             row_sums = target.sum(dim=1, keepdim=True).clamp(min=1.0)
             return target / row_sums, conflict
 
@@ -524,12 +594,14 @@ class LabelAwareSigLipLoss(nn.Module):
         match_mode: str = "single_label",
         neg_weight: float = 0.5,
         neg_margin: float = 0.0,
+        kernel_alpha: float = 1.0,
     ):
         super().__init__()
-        assert match_mode in ("single_label", "two_label", "negative_aware", "graded"), match_mode
+        assert match_mode in ("single_label", "two_label", "negative_aware", "graded", "signed_kernel", "label_dot"), match_mode
         self.match_mode = match_mode
         self.neg_weight = neg_weight
         self.neg_margin = neg_margin
+        self.kernel_alpha = kernel_alpha
         self._pos_threshold = 2 if match_mode == "two_label" else 1
 
     def _build_siglip_target(self, labels: torch.Tensor):
@@ -575,6 +647,33 @@ class LabelAwareSigLipLoss(nn.Module):
             conflict = conflict & (shared_pos == 0)
             conflict.fill_diagonal_(False)
             return target, conflict
+
+        if self.match_mode == "signed_kernel":
+            # Signed kernel: same K formula as LabelAwareClipLoss.
+            # target ∈ [0, 1] — used with soft BCE in forward().
+            conflicts = (pos @ neg.T) + (neg @ pos.T)
+            K = shared_pos.float() - self.kernel_alpha * conflicts.float()
+            B = labels.shape[0]
+            diag_idx = torch.arange(B, device=labels.device)
+            K[diag_idx, diag_idx] = K[diag_idx, diag_idx].clamp(min=1.0)
+            conflict = K < 0
+            conflict.fill_diagonal_(False)
+            target = K.clamp(min=0.0)
+            row_sums = target.sum(dim=1, keepdim=True).clamp(min=1.0)
+            return target / row_sums, conflict
+
+        if self.match_mode == "label_dot":
+            # Label dot-product: same formula as LabelAwareClipLoss.
+            # target ∈ [0, 1] — used with soft BCE in forward().
+            K = labels @ labels.T
+            B = labels.shape[0]
+            diag_idx = torch.arange(B, device=labels.device)
+            K[diag_idx, diag_idx] = K[diag_idx, diag_idx].clamp(min=1.0)
+            conflict = K < 0
+            conflict.fill_diagonal_(False)
+            target = K.clamp(min=0.0)
+            row_sums = target.sum(dim=1, keepdim=True).clamp(min=1.0)
+            return target / row_sums, conflict
 
         positive = shared_pos >= self._pos_threshold
         positive.fill_diagonal_(True)
@@ -678,7 +777,8 @@ class LabelAwareSigLipLoss(nn.Module):
         # Graded mode: target ∈ [0,1] → soft BCE: -(t·log σ(l) + (1-t)·log σ(-l))
         # Other modes: target ∈ {-1,+1} → standard SigLIP: -log σ(t·l)
         B = image_features.shape[0]
-        if self.match_mode == "graded":
+        if self.match_mode in ("graded", "signed_kernel", "label_dot"):
+            # target ∈ [0, 1]: soft BCE instead of ±1 SigLIP formula
             siglip_loss = -(
                 target * F.logsigmoid(logits) + (1 - target) * F.logsigmoid(-logits)
             ).sum() / B

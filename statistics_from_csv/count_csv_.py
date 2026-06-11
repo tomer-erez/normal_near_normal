@@ -2,8 +2,9 @@ import pandas as pd
 
 print("Loading CSV...")
 df = pd.read_csv(
-    r"/home/tomererez/normal_near_normal/cxr_data/mimic_cxr_official_test.csv"
+    r"/home/tomererez/normal_near_normal/cxr_data/all_txt_data_and_labels.csv"
 )
+print(f"dataset shape: {df.shape}")
 
 chexpert_cols = [col for col in df.columns if col.startswith("chexpert_")]
 
@@ -58,7 +59,21 @@ pd.options.display.float_format = "{:.3f}".format
 print("\nSummary table:")
 print(summary_df)
 
+num_cols = summary_df.select_dtypes(include='number').columns
+totals = summary_df[num_cols].sum()
+sum_row   = pd.Series({'column': 'Total',       **totals.to_dict()})
+ratio_row = pd.Series({'column': 'Total_ratio', **(totals / len(df)).to_dict()})
 
+df_with_total = pd.concat(
+    [
+        summary_df,
+        sum_row.to_frame().T,
+        ratio_row.to_frame().T
+    ],
+    ignore_index=True
+)
+
+print(df_with_total)
 
 
 # show how many rows have k positive labels for k=0,1,...,13
@@ -88,3 +103,34 @@ num_nan_labels = df[chexpert_cols].isna().sum(axis=1)
 nan_label_counts = num_nan_labels.value_counts().sort_index()
 for k, count in nan_label_counts.items():
     print(f"{k} NaN labels: {count:,} samples ({count/len(df):.3%})")
+
+# Overall label value distribution across all labels and all samples
+print("\nOverall label distribution (across all labels × all samples):")
+total_cells = len(df) * len(chexpert_cols)
+n1   = (df[chexpert_cols] == 1).sum().sum()
+n0   = (df[chexpert_cols] == 0).sum().sum()
+nm1  = (df[chexpert_cols] == -1).sum().sum()
+nnan = df[chexpert_cols].isna().sum().sum()
+for label, count in [("1  (positive)", n1), ("0  (negative)", n0), ("-1 (uncertain)", nm1), ("NaN (missing)", nnan)]:
+    print(f"  {label}: {count:7,}  ({count/total_cells:.3%})")
+
+# Count breakdown table: exactly 0, exactly 1, more than 1 per row
+print("\nPer-row count breakdown:")
+counts = {
+    "1 (pos)":  (df[chexpert_cols] == 1).sum(axis=1),
+    "0 (neg)":  (df[chexpert_cols] == 0).sum(axis=1),
+    "-1 (unc)": (df[chexpert_cols] == -1).sum(axis=1),
+    "NaN":      df[chexpert_cols].isna().sum(axis=1),
+}
+n = len(df)
+rows = []
+for label, s in counts.items():
+    rows.append({
+        "value": label,
+        "=0":    f"{(s==0).mean():.1%}",
+        "=1":    f"{(s==1).mean():.1%}",
+        ">1":    f"{(s >1).mean():.1%}",
+        ">4":    f"{(s >4).mean():.1%}",
+
+    })
+print(pd.DataFrame(rows).to_string(index=False))

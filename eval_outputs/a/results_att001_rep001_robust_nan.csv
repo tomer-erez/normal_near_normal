@@ -1,0 +1,91 @@
+query,type,n_relevant,pos_labels,neg_labels,P@1,R@1,HNRR@1,P@5,R@5,HNRR@5,P@10,R@10,HNRR@10
+an image with atelectasis but without cardiomegaly,negative,652,chexpert_Atelectasis,chexpert_Cardiomegaly,0.0,0.0,0.0,0.6,0.004601226993865031,0.0,0.6,0.009202453987730062,0.0
+an image with atelectasis but without consolidation,negative,942,chexpert_Atelectasis,chexpert_Consolidation,0.0,0.0,0.0,0.2,0.0010615711252653928,0.0,0.3,0.0031847133757961785,0.0
+an image with atelectasis but without edema,negative,703,chexpert_Atelectasis,chexpert_Edema,0.0,0.0,0.0,0.2,0.001422475106685633,0.0,0.2,0.002844950213371266,0.0
+an image with atelectasis but without fracture,negative,1005,chexpert_Atelectasis,chexpert_Fracture,0.0,0.0,0.0,0.2,0.0009950248756218905,0.0,0.3,0.0029850746268656717,0.0
+an image with atelectasis but without lung lesion,negative,1000,chexpert_Atelectasis,chexpert_Lung Lesion,0.0,0.0,0.0,0.2,0.001,0.0,0.3,0.003,0.0
+an image with atelectasis but without lung opacity,negative,603,chexpert_Atelectasis,chexpert_Lung Opacity,0.0,0.0,0.0,0.0,0.0,0.2,0.1,0.001658374792703151,0.3
+an image with atelectasis but without pleural effusion,negative,389,chexpert_Atelectasis,chexpert_Pleural Effusion,0.0,0.0,0.0,0.4,0.005141388174807198,0.0,0.2,0.005141388174807198,0.1
+an image with atelectasis but without pneumonia,negative,842,chexpert_Atelectasis,chexpert_Pneumonia,0.0,0.0,0.0,0.4,0.0023752969121140144,0.0,0.4,0.004750593824228029,0.0
+an image with atelectasis but without pneumothorax,negative,999,chexpert_Atelectasis,chexpert_Pneumothorax,0.0,0.0,0.0,0.0,0.0,0.0,0.3,0.003003003003003003,0.0
+an image with cardiomegaly but without atelectasis,negative,844,chexpert_Cardiomegaly,chexpert_Atelectasis,1.0,0.001184834123222749,0.0,0.2,0.001184834123222749,0.0,0.4,0.004739336492890996,0.0
+an image with cardiomegaly but without consolidation,negative,1135,chexpert_Cardiomegaly,chexpert_Consolidation,0.0,0.0,0.0,0.6,0.0026431718061674008,0.0,0.5,0.004405286343612335,0.0
+an image with cardiomegaly but without edema,negative,710,chexpert_Cardiomegaly,chexpert_Edema,0.0,0.0,0.0,0.2,0.0014084507042253522,0.0,0.5,0.007042253521126761,0.0
+an image with cardiomegaly but without fracture,negative,1209,chexpert_Cardiomegaly,chexpert_Fracture,0.0,0.0,0.0,0.4,0.0016542597187758478,0.2,0.3,0.0024813895781637717,0.1
+an image with cardiomegaly but without lung lesion,negative,1223,chexpert_Cardiomegaly,chexpert_Lung Lesion,1.0,0.0008176614881439084,0.0,0.4,0.001635322976287817,0.0,0.4,0.003270645952575634,0.0
+an image with cardiomegaly but without lung opacity,negative,859,chexpert_Cardiomegaly,chexpert_Lung Opacity,0.0,0.0,0.0,0.6,0.0034924330616996507,0.0,0.4,0.004656577415599534,0.1
+an image with cardiomegaly but without pleural effusion,negative,683,chexpert_Cardiomegaly,chexpert_Pleural Effusion,1.0,0.0014641288433382138,0.0,0.4,0.0029282576866764276,0.2,0.4,0.005856515373352855,0.1
+an image with cardiomegaly but without pneumonia,negative,1006,chexpert_Cardiomegaly,chexpert_Pneumonia,0.0,0.0,0.0,0.6,0.002982107355864811,0.0,0.8,0.007952286282306162,0.0
+an image with cardiomegaly but without pneumothorax,negative,1231,chexpert_Cardiomegaly,chexpert_Pneumothorax,0.0,0.0,0.0,0.4,0.0016246953696181965,0.0,0.5,0.004061738424045491,0.0
+an image with consolidation but without atelectasis,negative,226,chexpert_Consolidation,chexpert_Atelectasis,1.0,0.004424778761061947,0.0,0.2,0.004424778761061947,0.0,0.2,0.008849557522123894,0.0
+an image with consolidation but without cardiomegaly,negative,226,chexpert_Consolidation,chexpert_Cardiomegaly,0.0,0.0,0.0,0.4,0.008849557522123894,0.0,0.3,0.01327433628318584,0.0
+an image with consolidation but without edema,negative,234,chexpert_Consolidation,chexpert_Edema,0.0,0.0,0.0,0.4,0.008547008547008548,0.0,0.3,0.01282051282051282,0.0
+an image with consolidation but without fracture,negative,319,chexpert_Consolidation,chexpert_Fracture,0.0,0.0,0.0,0.0,0.0,0.0,0.1,0.003134796238244514,0.0
+an image with consolidation but without lung lesion,negative,296,chexpert_Consolidation,chexpert_Lung Lesion,0.0,0.0,1.0,0.4,0.006756756756756757,0.2,0.2,0.006756756756756757,0.2
+an image with consolidation but without lung opacity,negative,207,chexpert_Consolidation,chexpert_Lung Opacity,0.0,0.0,0.0,0.2,0.004830917874396135,0.2,0.3,0.014492753623188406,0.1
+an image with consolidation but without pleural effusion,negative,171,chexpert_Consolidation,chexpert_Pleural Effusion,0.0,0.0,0.0,0.2,0.005847953216374269,0.0,0.2,0.011695906432748537,0.0
+an image with consolidation but without pneumonia,negative,167,chexpert_Consolidation,chexpert_Pneumonia,1.0,0.005988023952095809,0.0,0.2,0.005988023952095809,0.0,0.1,0.005988023952095809,0.1
+an image with consolidation but without pneumothorax,negative,318,chexpert_Consolidation,chexpert_Pneumothorax,0.0,0.0,0.0,0.2,0.0031446540880503146,0.0,0.1,0.0031446540880503146,0.1
+an image with edema but without atelectasis,negative,661,chexpert_Edema,chexpert_Atelectasis,0.0,0.0,0.0,0.2,0.0015128593040847202,0.0,0.3,0.0045385779122541605,0.1
+an image with edema but without cardiomegaly,negative,472,chexpert_Edema,chexpert_Cardiomegaly,0.0,0.0,1.0,0.2,0.00211864406779661,0.4,0.2,0.00423728813559322,0.3
+an image with edema but without consolidation,negative,855,chexpert_Edema,chexpert_Consolidation,0.0,0.0,0.0,0.4,0.0023391812865497076,0.0,0.3,0.0035087719298245615,0.0
+an image with edema but without fracture,negative,940,chexpert_Edema,chexpert_Fracture,0.0,0.0,0.0,0.4,0.002127659574468085,0.0,0.5,0.005319148936170213,0.0
+an image with edema but without lung lesion,negative,942,chexpert_Edema,chexpert_Lung Lesion,1.0,0.0010615711252653928,0.0,0.6,0.0031847133757961785,0.0,0.6,0.006369426751592357,0.0
+an image with edema but without lung opacity,negative,641,chexpert_Edema,chexpert_Lung Opacity,0.0,0.0,0.0,0.6,0.0046801872074883,0.2,0.7,0.0109204368174727,0.1
+an image with edema but without pleural effusion,negative,449,chexpert_Edema,chexpert_Pleural Effusion,0.0,0.0,0.0,0.6,0.0066815144766146995,0.0,0.4,0.008908685968819599,0.2
+an image with edema but without pneumonia,negative,737,chexpert_Edema,chexpert_Pneumonia,0.0,0.0,0.0,0.6,0.004070556309362279,0.0,0.6,0.008141112618724558,0.0
+an image with edema but without pneumothorax,negative,944,chexpert_Edema,chexpert_Pneumothorax,0.0,0.0,0.0,0.6,0.0031779661016949155,0.0,0.5,0.005296610169491525,0.0
+an image with fracture but without atelectasis,negative,129,chexpert_Fracture,chexpert_Atelectasis,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+an image with fracture but without cardiomegaly,negative,113,chexpert_Fracture,chexpert_Cardiomegaly,0.0,0.0,0.0,0.0,0.0,0.2,0.0,0.0,0.2
+an image with fracture but without consolidation,negative,158,chexpert_Fracture,chexpert_Consolidation,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+an image with fracture but without edema,negative,138,chexpert_Fracture,chexpert_Edema,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+an image with fracture but without lung lesion,negative,157,chexpert_Fracture,chexpert_Lung Lesion,0.0,0.0,0.0,0.0,0.0,0.2,0.0,0.0,0.1
+an image with fracture but without lung opacity,negative,134,chexpert_Fracture,chexpert_Lung Opacity,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.1
+an image with fracture but without pleural effusion,negative,119,chexpert_Fracture,chexpert_Pleural Effusion,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+an image with fracture but without pneumonia,negative,149,chexpert_Fracture,chexpert_Pneumonia,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+an image with fracture but without pneumothorax,negative,161,chexpert_Fracture,chexpert_Pneumothorax,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+an image with lung lesion but without atelectasis,negative,153,chexpert_Lung Lesion,chexpert_Atelectasis,0.0,0.0,0.0,0.2,0.006535947712418301,0.0,0.3,0.0196078431372549,0.0
+an image with lung lesion but without cardiomegaly,negative,162,chexpert_Lung Lesion,chexpert_Cardiomegaly,0.0,0.0,0.0,0.2,0.006172839506172839,0.0,0.3,0.018518518518518517,0.0
+an image with lung lesion but without consolidation,negative,167,chexpert_Lung Lesion,chexpert_Consolidation,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+an image with lung lesion but without edema,negative,175,chexpert_Lung Lesion,chexpert_Edema,0.0,0.0,0.0,0.2,0.005714285714285714,0.0,0.3,0.017142857142857144,0.0
+an image with lung lesion but without fracture,negative,193,chexpert_Lung Lesion,chexpert_Fracture,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+an image with lung lesion but without lung opacity,negative,93,chexpert_Lung Lesion,chexpert_Lung Opacity,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.1
+an image with lung lesion but without pleural effusion,negative,128,chexpert_Lung Lesion,chexpert_Pleural Effusion,0.0,0.0,0.0,0.0,0.0,0.0,0.1,0.0078125,0.0
+an image with lung lesion but without pneumonia,negative,139,chexpert_Lung Lesion,chexpert_Pneumonia,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+an image with lung lesion but without pneumothorax,negative,192,chexpert_Lung Lesion,chexpert_Pneumothorax,0.0,0.0,0.0,0.0,0.0,0.0,0.2,0.010416666666666666,0.0
+an image with lung opacity but without atelectasis,negative,955,chexpert_Lung Opacity,chexpert_Atelectasis,0.0,0.0,0.0,0.0,0.0,0.2,0.0,0.0,0.1
+an image with lung opacity but without cardiomegaly,negative,1134,chexpert_Lung Opacity,chexpert_Cardiomegaly,1.0,0.0008818342151675485,0.0,0.2,0.0008818342151675485,0.0,0.3,0.0026455026455026454,0.0
+an image with lung opacity but without consolidation,negative,1366,chexpert_Lung Opacity,chexpert_Consolidation,1.0,0.0007320644216691069,0.0,0.4,0.0014641288433382138,0.0,0.4,0.0029282576866764276,0.1
+an image with lung opacity but without edema,negative,1088,chexpert_Lung Opacity,chexpert_Edema,0.0,0.0,0.0,0.4,0.001838235294117647,0.0,0.4,0.003676470588235294,0.1
+an image with lung opacity but without fracture,negative,1532,chexpert_Lung Opacity,chexpert_Fracture,1.0,0.0006527415143603133,0.0,0.2,0.0006527415143603133,0.2,0.1,0.0006527415143603133,0.1
+an image with lung opacity but without lung lesion,negative,1439,chexpert_Lung Opacity,chexpert_Lung Lesion,1.0,0.0006949270326615705,0.0,0.2,0.0006949270326615705,0.2,0.1,0.0006949270326615705,0.2
+an image with lung opacity but without pleural effusion,negative,926,chexpert_Lung Opacity,chexpert_Pleural Effusion,0.0,0.0,0.0,0.2,0.0010799136069114472,0.2,0.3,0.0032397408207343412,0.1
+an image with lung opacity but without pneumonia,negative,893,chexpert_Lung Opacity,chexpert_Pneumonia,1.0,0.0011198208286674132,0.0,0.2,0.0011198208286674132,0.2,0.4,0.004479283314669653,0.2
+an image with lung opacity but without pneumothorax,negative,1497,chexpert_Lung Opacity,chexpert_Pneumothorax,0.0,0.0,0.0,0.4,0.0013360053440213762,0.0,0.4,0.0026720106880427524,0.3
+an image with pleural effusion but without atelectasis,negative,839,chexpert_Pleural Effusion,chexpert_Atelectasis,1.0,0.0011918951132300357,0.0,0.6,0.003575685339690107,0.4,0.4,0.004767580452920143,0.3
+an image with pleural effusion but without cardiomegaly,negative,968,chexpert_Pleural Effusion,chexpert_Cardiomegaly,1.0,0.0010330578512396695,0.0,0.2,0.0010330578512396695,0.4,0.1,0.0010330578512396695,0.7
+an image with pleural effusion but without consolidation,negative,1335,chexpert_Pleural Effusion,chexpert_Consolidation,0.0,0.0,0.0,0.0,0.0,0.0,0.3,0.0022471910112359553,0.0
+an image with pleural effusion but without edema,negative,923,chexpert_Pleural Effusion,chexpert_Edema,1.0,0.0010834236186348862,0.0,0.6,0.0032502708559046588,0.2,0.6,0.0065005417118093175,0.2
+an image with pleural effusion but without fracture,negative,1499,chexpert_Pleural Effusion,chexpert_Fracture,1.0,0.00066711140760507,0.0,0.6,0.0020013342228152103,0.0,0.5,0.00333555703802535,0.0
+an image with pleural effusion but without lung lesion,negative,1469,chexpert_Pleural Effusion,chexpert_Lung Lesion,0.0,0.0,0.0,0.0,0.0,0.2,0.2,0.0013614703880190605,0.1
+an image with pleural effusion but without lung opacity,negative,950,chexpert_Pleural Effusion,chexpert_Lung Opacity,0.0,0.0,1.0,0.4,0.002105263157894737,0.2,0.3,0.003157894736842105,0.3
+an image with pleural effusion but without pneumonia,negative,1224,chexpert_Pleural Effusion,chexpert_Pneumonia,1.0,0.0008169934640522876,0.0,0.6,0.0024509803921568627,0.4,0.6,0.004901960784313725,0.3
+an image with pleural effusion but without pneumothorax,negative,1481,chexpert_Pleural Effusion,chexpert_Pneumothorax,0.0,0.0,0.0,0.2,0.0006752194463200541,0.2,0.4,0.0027008777852802163,0.1
+an image with pneumonia but without atelectasis,negative,399,chexpert_Pneumonia,chexpert_Atelectasis,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+an image with pneumonia but without cardiomegaly,negative,393,chexpert_Pneumonia,chexpert_Cardiomegaly,0.0,0.0,0.0,0.2,0.002544529262086514,0.0,0.1,0.002544529262086514,0.0
+an image with pneumonia but without consolidation,negative,440,chexpert_Pneumonia,chexpert_Consolidation,0.0,0.0,0.0,0.0,0.0,0.0,0.1,0.0022727272727272726,0.0
+an image with pneumonia but without edema,negative,393,chexpert_Pneumonia,chexpert_Edema,0.0,0.0,0.0,0.4,0.005089058524173028,0.0,0.4,0.010178117048346057,0.0
+an image with pneumonia but without fracture,negative,531,chexpert_Pneumonia,chexpert_Fracture,0.0,0.0,0.0,0.2,0.0018832391713747645,0.0,0.1,0.0018832391713747645,0.0
+an image with pneumonia but without lung lesion,negative,502,chexpert_Pneumonia,chexpert_Lung Lesion,1.0,0.00199203187250996,0.0,0.4,0.00398406374501992,0.0,0.5,0.0099601593625498,0.0
+an image with pneumonia but without lung opacity,negative,254,chexpert_Pneumonia,chexpert_Lung Opacity,0.0,0.0,1.0,0.2,0.003937007874015748,0.2,0.1,0.003937007874015748,0.3
+an image with pneumonia but without pleural effusion,negative,363,chexpert_Pneumonia,chexpert_Pleural Effusion,0.0,0.0,0.0,0.4,0.005509641873278237,0.0,0.2,0.005509641873278237,0.1
+an image with pneumonia but without pneumothorax,negative,526,chexpert_Pneumonia,chexpert_Pneumothorax,0.0,0.0,0.0,0.0,0.0,0.0,0.1,0.0019011406844106464,0.0
+an image with pneumothorax but without atelectasis,negative,100,chexpert_Pneumothorax,chexpert_Atelectasis,0.0,0.0,0.0,0.0,0.0,0.2,0.1,0.01,0.1
+an image with pneumothorax but without cardiomegaly,negative,123,chexpert_Pneumothorax,chexpert_Cardiomegaly,0.0,0.0,0.0,0.2,0.008130081300813009,0.0,0.2,0.016260162601626018,0.0
+an image with pneumothorax but without consolidation,negative,136,chexpert_Pneumothorax,chexpert_Consolidation,0.0,0.0,0.0,0.0,0.0,0.0,0.1,0.007352941176470588,0.0
+an image with pneumothorax but without edema,negative,121,chexpert_Pneumothorax,chexpert_Edema,0.0,0.0,0.0,0.0,0.0,0.0,0.1,0.008264462809917356,0.0
+an image with pneumothorax but without fracture,negative,138,chexpert_Pneumothorax,chexpert_Fracture,0.0,0.0,0.0,0.2,0.007246376811594203,0.0,0.1,0.007246376811594203,0.0
+an image with pneumothorax but without lung lesion,negative,138,chexpert_Pneumothorax,chexpert_Lung Lesion,0.0,0.0,0.0,0.0,0.0,0.0,0.1,0.007246376811594203,0.0
+an image with pneumothorax but without lung opacity,negative,92,chexpert_Pneumothorax,chexpert_Lung Opacity,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+an image with pneumothorax but without pleural effusion,negative,90,chexpert_Pneumothorax,chexpert_Pleural Effusion,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.2
+an image with pneumothorax but without pneumonia,negative,124,chexpert_Pneumothorax,chexpert_Pneumonia,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0

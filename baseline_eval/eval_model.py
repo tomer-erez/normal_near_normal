@@ -251,7 +251,12 @@ def _normalize(arr: np.ndarray) -> np.ndarray:
     return arr / np.where(norms == 0, 1.0, norms)
 
 
-def build_queries(query_mode: str = "all") -> list[dict]:
+NEG_TEMPLATE_DEFAULT = "{pos} and no {neg}"
+NEG_TEMPLATE_ROBUST  = "an image with {pos} but without {neg}"
+
+
+def build_queries(query_mode: str = "all",
+                  neg_template: str = NEG_TEMPLATE_DEFAULT) -> list[dict]:
     """
     Build the list of retrieval queries for evaluation.
 
@@ -264,8 +269,12 @@ def build_queries(query_mode: str = "all") -> list[dict]:
     Modes:
       single   13 queries  "atelectasis"
       pair     78 queries  "atelectasis and edema"
-      negative 156 queries "atelectasis and no cardiomegaly"
+      negative 156 queries — phrasing controlled by neg_template
       all      all of the above (247 total)
+
+    neg_template: Python format string with {pos} and {neg} placeholders.
+      Default:  "{pos} and no {neg}"           e.g. "atelectasis and no edema"
+      Robust:   "an image with {pos} but without {neg}"
     """
     queries = []
 
@@ -290,7 +299,7 @@ def build_queries(query_mode: str = "all") -> list[dict]:
     if query_mode in ("negative", "all"):
         for l_pos, l_neg in permutations(CHEXPERT_LABELS, 2):
             queries.append({
-                "query": f"{l_pos.lower()} and no {l_neg.lower()}",
+                "query": neg_template.format(pos=l_pos.lower(), neg=l_neg.lower()),
                 "type": "negative",
                 "pos_label_cols": [f"chexpert_{l_pos}"],
                 "neg_label_cols": [f"chexpert_{l_neg}"],
@@ -321,6 +330,11 @@ def recall_at_k(relevant: np.ndarray, k: int, n_relevant: int) -> float:
     if n_relevant == 0:
         return float("nan")
     return float(relevant[:k].sum() / n_relevant)
+
+
+def hnrr_at_k(hard_neg_mask: np.ndarray, k: int) -> float:
+    """Fraction of top-k retrieved images that are hard negatives (A=1 AND B=1)."""
+    return float(hard_neg_mask[:k].mean())
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -378,6 +392,11 @@ def main():
                              "an image is relevant to 'X and no Y' if Y==0 OR Y is NaN. "
                              "'ignore': only CSV 0 counts as absent — NaN images are excluded "
                              "from both relevant and irrelevant sets for that label.")
+    parser.add_argument("--neg-template", default=NEG_TEMPLATE_DEFAULT,
+                        help="Format string for negative query text. "
+                             "Placeholders: {pos} = positive label, {neg} = negated label. "
+                             f"Default: '{NEG_TEMPLATE_DEFAULT}'. "
+                             f"Robustness template: '{NEG_TEMPLATE_ROBUST}'.")
     args = parser.parse_args()
 
     if args.model_type == "cxrclip" and not args.cxrclip_checkpoint:
@@ -464,7 +483,7 @@ def main():
     log.info(f"Label matrix shape: {label_matrix.shape}")
 
     # ── Build and encode queries ──────────────────────────────────────────────
-    queries = build_queries(args.query_mode)
+    queries = build_queries(args.query_mode, neg_template=args.neg_template)
     log.info(f"Query mode: '{args.query_mode}'  →  {len(queries)} queries")
     query_strings = [q["query"] for q in queries]
     query_emb = backend.encode_texts(query_strings)
@@ -500,6 +519,14 @@ def main():
         n_relevant = int(relevant_mask.sum())
         retrieved_relevant = relevant_mask[top_k[i]]
 
+        # Hard negative: pos label present (A=1) AND neg label also present (B=1)
+        if neg_indices:
+            hard_neg_mask = (
+                pos_ok & (label_matrix[:, neg_indices] == 1.0).all(axis=1)
+            )[top_k[i]]
+        else:
+            hard_neg_mask = np.zeros(len(top_k[i]), dtype=bool)
+
         row = {
             "query": qdef["query"],
             "type": qdef["type"],
@@ -510,6 +537,7 @@ def main():
         for k in ks:
             row[f"P@{k}"] = precision_at_k(retrieved_relevant, k, n_relevant)
             row[f"R@{k}"] = recall_at_k(retrieved_relevant, k, n_relevant)
+            row[f"HNRR@{k}"] = hnrr_at_k(hard_neg_mask, k)
         rows.append(row)
 
     results_df = pd.DataFrame(rows)

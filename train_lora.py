@@ -116,6 +116,11 @@ def parse_args():
                         "model that uses the CXR-CLIP image encoder (frozen) paired with an "
                         "OpenCLIP text encoder specified by --base-model / --pretrained. "
                         "E.g. valid_pretrained_models_to_try/r50_mc.pt")
+    p.add_argument("--cxrclip-finetune", default=None,
+                   help="Path to a CXR-CLIP checkpoint (.pt). Full fine-tuning mode: frozen "
+                        "CXR-CLIP image encoder + trainable CXR-CLIP Bio_ClinicalBERT text "
+                        "encoder via LoRA. Use --lora-modules 'query,key,value,dense' and "
+                        "--lora-target both. E.g. valid_pretrained_models_to_try/r50_mc.pt")
     # Data
     p.add_argument("--train-csv", required=False,default="cxr_data/mimic_cxr_train.csv")
     p.add_argument("--image-dir", required=False,default="cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/")
@@ -160,19 +165,27 @@ def parse_args():
     # Scheduler
     p.add_argument("--scheduler", default="cosine", choices=["cosine", "plateau"],
                    help="LR scheduler. 'plateau' reduces LR when val loss stagnates.")
+    p.add_argument("--warmup-epochs", type=int, default=None,
+                   help="Linear warmup epochs. Default: epochs // 10.")
     # Early stopping
     p.add_argument("--patience", type=int, default=5,
                    help="Early stopping patience in epochs (0 to disable)")
     # Label-aware loss
     p.add_argument("--match-mode", default="standard",
-                   choices=["standard", "single_label", "two_label", "negative_aware", "graded", "image_pair"],
+                   choices=["standard", "single_label", "two_label", "negative_aware", "graded", "image_pair", "signed_kernel", "label_dot"],
                    help="How to define positive pairs in the batch. "
                         "'standard': diagonal (vanilla CLIP). "
                         "'single_label': share ≥1 positive label. "
                         "'two_label': share ≥2 positive labels. "
                         "'negative_aware': single_label + repulsion for conflicting pairs. "
-                        "'image_pair': SigLIP diagonal + image-image attraction/repulsion (recommended). "
+                        "'image_pair': SigLIP diagonal + image-image attraction/repulsion. "
+                        "'signed_kernel': K(i,j)=shared_pos - alpha*conflicts; soft target ∝ max(0,K). "
+                        "'label_dot': K(i,j)=l_i·l_j (full label dot product); requires --nan-mode ignore. "
                         "See training_guide.txt for details.")
+    p.add_argument("--kernel-alpha", type=float, default=1.0,
+                   help="Conflict penalty weight α in the signed_kernel target: "
+                        "K(i,j) = shared_pos(i,j) − α·conflicts(i,j). "
+                        "α=1 makes conflicting pairs neutral; α>1 makes them hard negatives.")
     p.add_argument("--negative-weight", type=float, default=0.25,
                    help="Weight for the repulsion loss term (negative_aware mode only).")
     p.add_argument("--negative-margin", type=float, default=0.0,
@@ -531,7 +544,18 @@ def main():
     # ── Base model ────────────────────────────────────────────────────────────
     pretrained = args.pretrained if args.pretrained else None
 
-    if args.cxrclip_checkpoint:
+    if args.cxrclip_finetune:
+        # Full CXR-CLIP fine-tuning: frozen image encoder + trainable Bio_ClinicalBERT
+        if is_main:
+            log.info(
+                f"CXR-CLIP finetune mode — checkpoint: {args.cxrclip_finetune}  "
+                "image encoder frozen, Bio_ClinicalBERT text encoder trainable via LoRA"
+            )
+        from train.cxrclip_finetune_model import CXRClipFinetuneModel
+        model = CXRClipFinetuneModel(args.cxrclip_finetune)
+        preprocess_train = CXRClipFinetuneModel.make_preprocess(args.cxrclip_finetune)
+        tokenizer = model.make_tokenizer()
+    elif args.cxrclip_checkpoint:
         # Hybrid mode: frozen CXR-CLIP image encoder + trainable OpenCLIP text encoder
         if is_main:
             log.info(
@@ -658,7 +682,7 @@ def main():
     optimizer = torch.optim.AdamW(trainable, lr=args.lr, weight_decay=0.01)
 
     # ── Scheduler ─────────────────────────────────────────────────────────────
-    warmup_epochs = max(1, args.epochs // 10)
+    warmup_epochs = args.warmup_epochs if args.warmup_epochs is not None else max(1, args.epochs // 10)
 
     if args.scheduler == "cosine":
         min_factor = args.min_lr / args.lr
@@ -705,12 +729,14 @@ def main():
                 match_mode=args.match_mode,
                 neg_weight=args.negative_weight,
                 neg_margin=args.negative_margin,
+                kernel_alpha=args.kernel_alpha,
             )
         else:
             loss_fn = LabelAwareSigLipLoss(
                 match_mode=args.match_mode,
                 neg_weight=args.negative_weight,
                 neg_margin=args.negative_margin,
+                kernel_alpha=args.kernel_alpha,
             )
     if is_main:
         if args.match_mode == "image_pair":
