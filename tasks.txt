@@ -1,48 +1,13 @@
-finalize and decide our best model
-add more query types?
+ablations generaly: losses hyper params, how we did with oracle on small data for params and methods decision
 
+moshe hnrr analysis in hte tex
 
-for paper:
+a visual figure which shows where other models fail in composite queries
 
-say we are model in single , pair, and negation?
+linguistic robustness
 
-explain that we are doing yes a and not b as the negation
+moshe sent whatsapp to review some paper
 
-citations: make sure you cite correctly
+fine tune of swint vs from scratch what works best?
 
-the benchmark part is ok, the question is about methods now,
-i think we need to show some methods in the paper like hard negative mining, specific loss design etc
-
-reoport the recall only for rare query with low number of relevnt items, otherwise the recall is not a good metric for evaluation, 
-
-create more queries and query types
-
-run the biomedical model again!
-
-using a good medical image encoder with a regular clip text encoder?
-
-summary of graded vs single model as the match mode. use caption mode all or not?
-
-ablation: nans as nans vs nans as negatives!
-
-add statistics of label frequncy in the dataset to the paper?
-
-important experiments left to run:
-- graded vs single match mode
-- find a biomedical model vs the clip cxr we have vs the clip that we train
-- ignore nans or treat as negatives?
-- create more query types?  more complex?
-- more varaitions in the query, not the exact training query: edema and no effusion -> a scan with edema but no effusion
-- show results with vs without the exclusion of the 3 labels with low precision in radiologist validation 
-- still need to advance the repel loss idea?
-- siglip vs clip loss 
-- fine tune the cxrclip model again? the swint and the resnet
-- train with different splits of single/pair/negation in the sampling of the data and show results on each metric
-- mathematical/ai explanability of results? gradcam or something?
-
-notes from 3.6 meeting:
-
-method formulation:
-- we train with the 3 query types: single, pair, and negation
-- we also add a repel loss to push away the negatives in the embedding space, for items that have conflict in a label
-- we evaluate with the same 3 query types, 
+from all my metrics decide what we keep
