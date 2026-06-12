@@ -250,3 +250,5 @@ experiments/
 
 ./tmp.tex
 tmp.tex
+
+logs/
