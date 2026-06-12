@@ -1,0 +1,91 @@
+query,n_relevant,cxrclip_swint_labeldot_P@1,cxrclip_swint_labeldot_P@3,cxrclip_swint_labeldot_P@5,cxrclip_swint_labeldot_R@1,cxrclip_swint_labeldot_R@3,cxrclip_swint_labeldot_R@5
+atelectasis and no cardiomegaly,59,0.0,0.0,0.0,0.0,0.0,0.0
+atelectasis and no consolidation,26,0.0,0.0,0.0,0.0,0.0,0.0
+atelectasis and no edema,118,0.0,0.0,0.2,0.0,0.0,1.0
+atelectasis and no fracture,1,0.0,0.0,0.0,0.0,0.0,0.0
+atelectasis and no lung lesion,4,0.0,0.0,0.0,0.0,0.0,0.0
+atelectasis and no lung opacity,30,0.0,0.0,0.0,0.0,0.0,0.0
+atelectasis and no pleural effusion,94,0.0,0.0,0.0,0.0,0.0,0.0
+atelectasis and no pneumonia,96,0.0,0.0,0.0,0.0,0.0,0.0
+atelectasis and no pneumothorax,301,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+cardiomegaly and no atelectasis,9,0.0,0.0,0.0,0.0,0.0,0.0
+cardiomegaly and no consolidation,61,0.0,0.0,0.0,0.0,0.0,0.0
+cardiomegaly and no edema,221,0.0,0.3333333333333333,0.4,0.0,1.0,1.0
+cardiomegaly and no fracture,3,0.0,0.0,0.0,0.0,0.0,0.0
+cardiomegaly and no lung lesion,5,0.0,0.0,0.0,0.0,0.0,0.0
+cardiomegaly and no lung opacity,36,0.0,0.0,0.0,0.0,0.0,0.0
+cardiomegaly and no pleural effusion,228,0.0,0.0,0.0,0.0,0.0,0.0
+cardiomegaly and no pneumonia,175,0.0,0.0,0.0,0.0,0.0,0.0
+cardiomegaly and no pneumothorax,391,0.0,0.0,0.0,0.0,0.0,0.0
+consolidation and no atelectasis,1,0.0,0.0,0.0,0.0,0.0,0.0
+consolidation and no cardiomegaly,26,0.0,0.0,0.0,0.0,0.0,0.0
+consolidation and no edema,29,0.0,0.0,0.0,0.0,0.0,0.0
+consolidation and no fracture,0,,,,,,
+consolidation and no lung lesion,1,0.0,0.0,0.0,0.0,0.0,0.0
+consolidation and no lung opacity,5,0.0,0.0,0.0,0.0,0.0,0.0
+consolidation and no pleural effusion,40,0.0,0.0,0.0,0.0,0.0,0.0
+consolidation and no pneumonia,0,,,,,,
+consolidation and no pneumothorax,101,0.0,0.0,0.0,0.0,0.0,0.0
+edema and no atelectasis,3,0.0,0.0,0.0,0.0,0.0,0.0
+edema and no cardiomegaly,41,0.0,0.0,0.0,0.0,0.0,0.0
+edema and no consolidation,26,0.0,0.0,0.0,0.0,0.0,0.0
+edema and no fracture,3,0.0,0.0,0.0,0.0,0.0,0.0
+edema and no lung lesion,0,,,,,,
+edema and no lung opacity,8,0.0,0.0,0.0,0.0,0.0,0.0
+edema and no pleural effusion,52,0.0,0.0,0.0,0.0,0.0,0.0
+edema and no pneumonia,50,0.0,0.0,0.0,0.0,0.0,0.0
+edema and no pneumothorax,216,0.0,0.0,0.2,0.0,0.0,1.0
+fracture and no atelectasis,0,,,,,,
+fracture and no cardiomegaly,22,0.0,0.0,0.0,0.0,0.0,0.0
+fracture and no consolidation,12,0.0,0.0,0.0,0.0,0.0,0.0
+fracture and no edema,38,0.0,0.0,0.0,0.0,0.0,0.0
+fracture and no lung lesion,1,0.0,0.0,0.0,0.0,0.0,0.0
+fracture and no lung opacity,8,0.0,0.0,0.0,0.0,0.0,0.0
+fracture and no pleural effusion,40,0.0,0.0,0.0,0.0,0.0,0.0
+fracture and no pneumonia,34,0.0,0.0,0.2,0.0,0.0,1.0
+fracture and no pneumothorax,52,0.0,0.0,0.0,0.0,0.0,0.0
+lung lesion and no atelectasis,0,,,,,,
+lung lesion and no cardiomegaly,15,0.0,0.0,0.0,0.0,0.0,0.0
+lung lesion and no consolidation,7,0.0,0.0,0.0,0.0,0.0,0.0
+lung lesion and no edema,25,0.0,0.0,0.0,0.0,0.0,0.0
+lung lesion and no fracture,0,,,,,,
+lung lesion and no lung opacity,2,0.0,0.0,0.0,0.0,0.0,0.0
+lung lesion and no pleural effusion,20,0.0,0.0,0.0,0.0,0.0,0.0
+lung lesion and no pneumonia,17,0.0,0.0,0.0,0.0,0.0,0.0
+lung lesion and no pneumothorax,40,0.0,0.0,0.2,0.0,0.0,1.0
+lung opacity and no atelectasis,4,0.0,0.0,0.0,0.0,0.0,0.0
+lung opacity and no cardiomegaly,84,0.0,0.0,0.0,0.0,0.0,0.0
+lung opacity and no consolidation,34,0.0,0.0,0.0,0.0,0.0,0.0
+lung opacity and no edema,117,0.0,0.0,0.0,0.0,0.0,0.0
+lung opacity and no fracture,0,,,,,,
+lung opacity and no lung lesion,2,0.0,0.0,0.0,0.0,0.0,0.0
+lung opacity and no pleural effusion,167,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+lung opacity and no pneumonia,73,0.0,0.3333333333333333,0.4,0.0,1.0,1.0
+lung opacity and no pneumothorax,352,0.0,0.0,0.2,0.0,0.0,1.0
+pleural effusion and no atelectasis,1,0.0,0.0,0.0,0.0,0.0,0.0
+pleural effusion and no cardiomegaly,86,0.0,0.0,0.0,0.0,0.0,0.0
+pleural effusion and no consolidation,28,0.0,0.0,0.0,0.0,0.0,0.0
+pleural effusion and no edema,112,0.0,0.0,0.0,0.0,0.0,0.0
+pleural effusion and no fracture,0,,,,,,
+pleural effusion and no lung lesion,10,0.0,0.0,0.0,0.0,0.0,0.0
+pleural effusion and no lung opacity,28,0.0,0.0,0.0,0.0,0.0,0.0
+pleural effusion and no pneumonia,86,0.0,0.0,0.0,0.0,0.0,0.0
+pleural effusion and no pneumothorax,439,0.0,0.0,0.4,0.0,0.0,1.0
+pneumonia and no atelectasis,4,0.0,0.0,0.0,0.0,0.0,0.0
+pneumonia and no cardiomegaly,27,0.0,0.0,0.0,0.0,0.0,0.0
+pneumonia and no consolidation,31,0.0,0.0,0.0,0.0,0.0,0.0
+pneumonia and no edema,35,0.0,0.0,0.0,0.0,0.0,0.0
+pneumonia and no fracture,0,,,,,,
+pneumonia and no lung lesion,7,0.0,0.0,0.2,0.0,0.0,1.0
+pneumonia and no lung opacity,16,0.0,0.0,0.0,0.0,0.0,0.0
+pneumonia and no pleural effusion,63,0.0,0.0,0.0,0.0,0.0,0.0
+pneumonia and no pneumothorax,83,0.0,0.0,0.0,0.0,0.0,0.0
+pneumothorax and no atelectasis,2,0.0,0.0,0.0,0.0,0.0,0.0
+pneumothorax and no cardiomegaly,15,0.0,0.0,0.0,0.0,0.0,0.0
+pneumothorax and no consolidation,5,0.0,0.0,0.0,0.0,0.0,0.0
+pneumothorax and no edema,13,0.0,0.0,0.0,0.0,0.0,0.0
+pneumothorax and no fracture,0,,,,,,
+pneumothorax and no lung lesion,0,,,,,,
+pneumothorax and no lung opacity,1,0.0,0.0,0.0,0.0,0.0,0.0
+pneumothorax and no pleural effusion,11,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+pneumothorax and no pneumonia,2,0.0,0.0,0.0,0.0,0.0,0.0

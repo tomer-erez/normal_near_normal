@@ -91,17 +91,17 @@ MODELS = [
     #     "finetuned_pretrained": "",
     #     "finetuned_checkpoint": "experiments/lora_biomedclip_with_5_ep/final_merged.pt",
     # },
-    {
-        "name": "vanilla_clip_loss",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/_vanilla_bsz16x8/final_merged.pt",
-    },
+    # {
+    #     "name": "vanilla_clip_loss",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/_vanilla_bsz16x8/final_merged.pt",
+    # },
 
     
-            {
+    {
         "name": "caption_mode_all_clip",
         "model_type": "finetuned",
         "checkpoint": None,
@@ -111,25 +111,14 @@ MODELS = [
     },
 
     
-    
-                                                                    {
-        "name": "att001_rep001",
+    {
+        "name": "label_dot_cliploss",
         "model_type": "finetuned",
         "checkpoint": None,
         "finetuned_base_model": "ViT-B-32",
         "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/att001_rep001/final_merged.pt",
+        "finetuned_checkpoint": "experiments/label_dot_cliploss/final_merged.pt",
     },   
-    
-    
-    # {
-    #     "name": "label_dot_cliploss",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/label_dot_cliploss/final_merged.pt",
-    # },   
                                                                         
     # {
     #     "name": "label_dot_sigliploss",
@@ -140,27 +129,34 @@ MODELS = [
     #     "finetuned_checkpoint": "experiments/label_dot_sigliploss/final_merged.pt",
     # },   
     
-    #     {
-    #     "name": "claude_hyperparms_label_dot_clip",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/claude_hyperparms_label_dot_clip/final_merged.pt",
-    # },   
+    {
+        "name": "claude_hyperparms_label_dot_clip",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/claude_hyperparms_label_dot_clip/final_merged.pt",
+    },   
                                                                         
+
+    {
+        "name": "cxrclip_r50_labeldot_unfrozen",
+        "model_type": "cxrclip_finetune",
+        "checkpoint": None,
+        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/r50_mc.pt",
+        "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_r50_labeldot_unfrozen/final_merged.pt",
+    },
     # {
-    #     "name": "claude_hyperparms_label_dot_clip_r32_a32",
-    #     "model_type": "finetuned",
+    #     "name": "cxrclip_swint_labeldot",
+    #     "model_type": "cxrclip_finetune",
     #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/claude_hyperparms_label_dot_clip_r32_a32/final_merged.pt",
-    # },   
-        
+    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
+    #     "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_swint_labeldot/final_merged.pt",
+    # },
+
 ]
 
-KS = [1, 5, 10]
+KS = [1, 3, 5]
 METRIC_COLS = [f"P@{k}" for k in KS] + [f"R@{k}" for k in KS]
 HNRR_COLS  = [f"HNRR@{k}" for k in KS]   # only meaningful for negative query types
 
@@ -168,7 +164,7 @@ HNRR_COLS  = [f"HNRR@{k}" for k in KS]   # only meaningful for negative query ty
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def results_path(model: dict) -> Path:
-    if model["model_type"] in ("finetuned", "cxrclip_hybrid"):
+    if model["model_type"] in ("finetuned", "cxrclip_hybrid", "cxrclip_finetune"):
         return REPO_ROOT / f"results_{model['name']}.csv"
     if model.get("checkpoint"):
         stem = Path(model["checkpoint"]).stem
@@ -203,6 +199,7 @@ def run_eval(model: dict, paired_dir: str, csv: str,
         "--query_mode", query_mode,
         "--batch_size", str(batch_size),
         "--nan-mode", nan_mode,
+        "--ks", *[str(k) for k in KS],
     ]
     if neg_template is not None:
         cmd += ["--neg-template", neg_template]
@@ -222,6 +219,11 @@ def run_eval(model: dict, paired_dir: str, csv: str,
             "--hybrid_merged_checkpoint", str(REPO_ROOT / model["hybrid_merged_checkpoint"]),
             "--hybrid_text_model", model.get("hybrid_text_model", "ViT-B-32"),
             "--hybrid_text_pretrained", model.get("hybrid_text_pretrained", "openai"),
+        ]
+    if model["model_type"] == "cxrclip_finetune":
+        cmd += [
+            "--cxrclip_finetune_image_checkpoint", str(REPO_ROOT / model["cxrclip_finetune_image_checkpoint"]),
+            "--cxrclip_finetune_merged_checkpoint", str(REPO_ROOT / model["cxrclip_finetune_merged_checkpoint"]),
         ]
     log.info(f"Running: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
@@ -283,9 +285,10 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
         qt for df in all_results.values() for qt in df["type"].unique()
     }
 
-    # ── 1. Heatmap: P@10 and R@10 per label, per model (single queries) ───────
+    K_LAST = KS[-1]
+    # ── 1. Heatmap: P@Klast and R@Klast per label, per model (single queries) ──
     if "single" in qtypes_present:
-        for metric in ["P@10", "R@10"]:
+        for metric in [f"P@{K_LAST}", f"R@{K_LAST}"]:
             label_names = all_results[model_names[0]]
             label_names = label_names[label_names["type"] == "single"]["query"].tolist()
 
@@ -316,8 +319,8 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
         x = np.arange(len(model_names))
         width = 0.25
         for ax, prefix, metrics in [
-            (axes[0], "P", ["P@1", "P@5", "P@10"]),
-            (axes[1], "R", ["R@1", "R@5", "R@10"]),
+            (axes[0], "P", [f"P@{k}" for k in KS]),
+            (axes[1], "R", [f"R@{k}" for k in KS]),
         ]:
             # Collect all values first so we can set ylim before drawing labels
             all_metric_vals = []
@@ -357,9 +360,9 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
         plt.close(fig)
         log.info(f"Saved → {path}")
 
-    # ── 3. Per-label grouped bar: P@10 / R@10 for each label, bars = models ────
+    # ── 3. Per-label grouped bar: P@Klast / R@Klast for each label, bars = models ──
     if "single" in qtypes_present:
-        for metric in ["P@10", "R@10"]:
+        for metric in [f"P@{K_LAST}", f"R@{K_LAST}"]:
             label_names = all_results[model_names[0]]
             label_names = label_names[label_names["type"] == "single"]["query"].tolist()
             n_labels = len(label_names)
@@ -427,8 +430,8 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
         x = np.arange(len(model_names))
         width = 0.25
         for ax, prefix, metrics in [
-            (axes[0], "P", ["P@1", "P@5", "P@10"]),
-            (axes[1], "R", ["R@1", "R@5", "R@10"]),
+            (axes[0], "P", [f"P@{k}" for k in KS]),
+            (axes[1], "R", [f"R@{k}" for k in KS]),
         ]:
             all_metric_vals = []
             per_metric = []
@@ -535,7 +538,7 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
                 i = LABEL_TO_IDX.get(pos_col)
                 j = LABEL_TO_IDX.get(neg_col)
                 if i is not None and j is not None and row["n_relevant"] > 0:
-                    matrix[i, j] = row["P@10"]
+                    matrix[i, j] = row[f"P@{K_LAST}"]
 
             fig, ax = plt.subplots(figsize=(14, 11))
             sns.heatmap(
@@ -549,7 +552,7 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
                 ax=ax,
             )
             ax.set_title(
-                f"P@10 — 'yes [row] and no [col]' queries\nModel: {short}  |  {neg_subtitle}",
+                f"P@{K_LAST} — 'yes [row] and no [col]' queries\nModel: {short}  |  {neg_subtitle}",
                 fontsize=12, pad=12,
             )
             ax.set_xlabel("Negated label  (must NOT be present)", fontsize=10)
@@ -672,7 +675,7 @@ def main():
         epilog=__doc__,
     )
     parser.add_argument("--paired_dir", required=True)
-    parser.add_argument("--csv", required=False,default="cxr_data/all_txt_data_and_labels.csv",)
+    parser.add_argument("--csv", required=False,default="cxr_data/mimic_cxr_official_test.csv",)
     parser.add_argument("--max_samples", type=int, default=None,
                         help="Limit number of dataset items to evaluate(default: all, which is 5159 for cxr dataset)")
     parser.add_argument("--output_dir", required=True,
@@ -716,6 +719,11 @@ def main():
             ft_ckpt = REPO_ROOT / model["finetuned_checkpoint"]
             if not ft_ckpt.exists():
                 log.warning(f"Finetuned checkpoint not found, skipping {model['name']}: {ft_ckpt}")
+                continue
+        if model["model_type"] == "cxrclip_finetune":
+            ft_ckpt = REPO_ROOT / model["cxrclip_finetune_merged_checkpoint"]
+            if not ft_ckpt.exists():
+                log.warning(f"CXRClip finetune checkpoint not found, skipping {model['name']}: {ft_ckpt}")
                 continue
         if model["model_type"] == "cxrclip_hybrid":
             merged_ckpt = REPO_ROOT / model["hybrid_merged_checkpoint"]

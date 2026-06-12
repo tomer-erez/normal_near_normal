@@ -244,6 +244,47 @@ class CXRClipBackend:
         return _normalize(np.concatenate(all_embs, axis=0))
 
 
+class CXRClipFinetuneBackend:
+    """
+    Loads a CXRClipFinetuneModel (ResNet50 image + Bio_ClinicalBERT text) from
+    its final_merged.pt checkpoint.  Requires the original CXR-CLIP checkpoint
+    to reconstruct the architecture before loading the trained weights.
+    """
+
+    def __init__(self, image_checkpoint: str, merged_checkpoint: str, device: torch.device):
+        sys.path.insert(0, str(REPO_ROOT))
+        from train.cxrclip_finetune_model import CXRClipFinetuneModel
+
+        self.device = device
+        model = CXRClipFinetuneModel(image_checkpoint)
+        state = torch.load(merged_checkpoint, map_location="cpu", weights_only=False)
+        model.load_state_dict(state, strict=True)
+        model.to(device).eval()
+        self.model = model
+        self.tokenizer = model.make_tokenizer()
+        self.preprocess = CXRClipFinetuneModel.make_preprocess(image_checkpoint)
+        log.info(f"Loaded CXRClipFinetuneModel from {merged_checkpoint}")
+
+    def encode_images(self, image_paths: list[Path], batch_size: int = 64) -> np.ndarray:
+        dataset = ImageFolderDataset(image_paths, self.preprocess)
+        loader = DataLoader(dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
+        all_embs = []
+        with torch.no_grad():
+            for batch in loader:
+                emb = self.model.encode_image(batch.to(self.device), normalize=False).float().cpu().numpy()
+                all_embs.append(emb)
+        return _normalize(np.concatenate(all_embs, axis=0))
+
+    def encode_texts(self, texts: list[str], batch_size: int = 256) -> np.ndarray:
+        all_embs = []
+        with torch.no_grad():
+            for i in range(0, len(texts), batch_size):
+                tokens = self.tokenizer(texts[i : i + batch_size]).to(self.device)
+                emb = self.model.encode_text(tokens, normalize=False).float().cpu().numpy()
+                all_embs.append(emb)
+        return _normalize(np.concatenate(all_embs, axis=0))
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _normalize(arr: np.ndarray) -> np.ndarray:
@@ -327,9 +368,10 @@ def precision_at_k(relevant: np.ndarray, k: int, n_relevant: int) -> float:
 
 
 def recall_at_k(relevant: np.ndarray, k: int, n_relevant: int) -> float:
+    """Standard retrieval R@K: 1 if any relevant image appears in top-K, else 0."""
     if n_relevant == 0:
         return float("nan")
-    return float(relevant[:k].sum() / n_relevant)
+    return float(relevant[:k].any())
 
 
 def hnrr_at_k(hard_neg_mask: np.ndarray, k: int) -> float:
@@ -347,7 +389,7 @@ def main():
     )
     parser.add_argument("--model_type", required=True,
                         choices=["vanilla_clip", "biomedclip", "cxrclip", "finetuned",
-                                 "cxrclip_hybrid"],
+                                 "cxrclip_hybrid", "cxrclip_finetune"],
                         help="Which model backend to use")
     parser.add_argument("--paired_dir", required=True,
                         help="Folder with *.jpg symlinks (output of build_baseline.py)")
@@ -378,6 +420,12 @@ def main():
                         help="OpenCLIP model name used as text encoder in the hybrid model")
     parser.add_argument("--hybrid_text_pretrained", default="openai",
                         help="OpenCLIP pretrained tag for the hybrid text encoder")
+    parser.add_argument("--cxrclip_finetune_image_checkpoint", default=None,
+                        help="Path to original CXR-CLIP .pt checkpoint used to reconstruct the "
+                             "CXRClipFinetuneModel architecture (required for --model_type cxrclip_finetune)")
+    parser.add_argument("--cxrclip_finetune_merged_checkpoint", default=None,
+                        help="Path to final_merged.pt saved by train_lora.py --cxrclip-finetune "
+                             "(required for --model_type cxrclip_finetune)")
     parser.add_argument("--name", default=None,
                         help="Override output filename stem, e.g. 'lora_vitb32'. "
                              "Saves to results_{name}.csv. Defaults to model_type.")
@@ -405,6 +453,8 @@ def main():
         parser.error("--finetuned_base_model and --finetuned_checkpoint are required for --model_type finetuned")
     if args.model_type == "cxrclip_hybrid" and not (args.cxrclip_image_checkpoint and args.hybrid_merged_checkpoint):
         parser.error("--cxrclip_image_checkpoint and --hybrid_merged_checkpoint are required for --model_type cxrclip_hybrid")
+    if args.model_type == "cxrclip_finetune" and not (args.cxrclip_finetune_image_checkpoint and args.cxrclip_finetune_merged_checkpoint):
+        parser.error("--cxrclip_finetune_image_checkpoint and --cxrclip_finetune_merged_checkpoint are required for --model_type cxrclip_finetune")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     log.info(f"Device: {device}")
@@ -434,6 +484,12 @@ def main():
             args.hybrid_text_pretrained,
             device,
         )
+    elif args.model_type == "cxrclip_finetune":
+        backend = CXRClipFinetuneBackend(
+            args.cxrclip_finetune_image_checkpoint,
+            args.cxrclip_finetune_merged_checkpoint,
+            device,
+        )
     else:
         backend = CXRClipBackend(args.cxrclip_checkpoint, device)
 
@@ -458,6 +514,9 @@ def main():
         ckpt = Path(args.finetuned_checkpoint)
         # Use parent dir name + stem so different experiments don't collide on "final_merged"
         cache_name = f"img_emb_finetuned_{ckpt.parent.name}_{ckpt.stem}{ms_tag}.npy"
+    elif args.model_type == "cxrclip_finetune":
+        ckpt = Path(args.cxrclip_finetune_merged_checkpoint)
+        cache_name = f"img_emb_cxrclip_finetune_{ckpt.parent.name}_{ckpt.stem}{ms_tag}.npy"
     else:
         cache_name = f"img_emb_{args.model_type}{ms_tag}.npy"
     cache_path = paired_dir.parent / cache_name

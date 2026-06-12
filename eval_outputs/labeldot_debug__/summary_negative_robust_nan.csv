@@ -1,0 +1,91 @@
+query,n_relevant,cxrclip_swint_labeldot_P@1,cxrclip_swint_labeldot_P@3,cxrclip_swint_labeldot_P@5,cxrclip_swint_labeldot_R@1,cxrclip_swint_labeldot_R@3,cxrclip_swint_labeldot_R@5
+an image with atelectasis but without cardiomegaly,652,0.0,0.0,0.2,0.0,0.0,1.0
+an image with atelectasis but without consolidation,942,0.0,0.0,0.0,0.0,0.0,0.0
+an image with atelectasis but without edema,703,0.0,0.0,0.0,0.0,0.0,0.0
+an image with atelectasis but without fracture,1005,0.0,0.0,0.0,0.0,0.0,0.0
+an image with atelectasis but without lung lesion,1000,0.0,0.0,0.2,0.0,0.0,1.0
+an image with atelectasis but without lung opacity,603,0.0,0.0,0.2,0.0,0.0,1.0
+an image with atelectasis but without pleural effusion,389,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+an image with atelectasis but without pneumonia,842,0.0,0.0,0.2,0.0,0.0,1.0
+an image with atelectasis but without pneumothorax,999,0.0,0.3333333333333333,0.6,0.0,1.0,1.0
+an image with cardiomegaly but without atelectasis,844,0.0,0.6666666666666666,0.6,0.0,1.0,1.0
+an image with cardiomegaly but without consolidation,1135,1.0,0.6666666666666666,0.8,1.0,1.0,1.0
+an image with cardiomegaly but without edema,710,1.0,0.6666666666666666,0.8,1.0,1.0,1.0
+an image with cardiomegaly but without fracture,1209,0.0,0.3333333333333333,0.6,0.0,1.0,1.0
+an image with cardiomegaly but without lung lesion,1223,1.0,0.6666666666666666,0.6,1.0,1.0,1.0
+an image with cardiomegaly but without lung opacity,859,0.0,0.3333333333333333,0.6,0.0,1.0,1.0
+an image with cardiomegaly but without pleural effusion,683,0.0,0.3333333333333333,0.6,0.0,1.0,1.0
+an image with cardiomegaly but without pneumonia,1006,1.0,1.0,0.8,1.0,1.0,1.0
+an image with cardiomegaly but without pneumothorax,1231,0.0,0.6666666666666666,0.6,0.0,1.0,1.0
+an image with consolidation but without atelectasis,226,0.0,0.0,0.0,0.0,0.0,0.0
+an image with consolidation but without cardiomegaly,226,0.0,0.0,0.0,0.0,0.0,0.0
+an image with consolidation but without edema,234,0.0,0.0,0.0,0.0,0.0,0.0
+an image with consolidation but without fracture,319,0.0,0.0,0.0,0.0,0.0,0.0
+an image with consolidation but without lung lesion,296,0.0,0.0,0.2,0.0,0.0,1.0
+an image with consolidation but without lung opacity,207,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+an image with consolidation but without pleural effusion,171,0.0,0.0,0.0,0.0,0.0,0.0
+an image with consolidation but without pneumonia,167,0.0,0.0,0.0,0.0,0.0,0.0
+an image with consolidation but without pneumothorax,318,0.0,0.0,0.0,0.0,0.0,0.0
+an image with edema but without atelectasis,661,0.0,0.0,0.2,0.0,0.0,1.0
+an image with edema but without cardiomegaly,472,1.0,0.3333333333333333,0.2,1.0,1.0,1.0
+an image with edema but without consolidation,855,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+an image with edema but without fracture,940,1.0,0.3333333333333333,0.2,1.0,1.0,1.0
+an image with edema but without lung lesion,942,1.0,0.3333333333333333,0.2,1.0,1.0,1.0
+an image with edema but without lung opacity,641,0.0,0.0,0.0,0.0,0.0,0.0
+an image with edema but without pleural effusion,449,0.0,0.0,0.0,0.0,0.0,0.0
+an image with edema but without pneumonia,737,1.0,0.3333333333333333,0.4,1.0,1.0,1.0
+an image with edema but without pneumothorax,944,1.0,0.3333333333333333,0.6,1.0,1.0,1.0
+an image with fracture but without atelectasis,129,0.0,0.0,0.0,0.0,0.0,0.0
+an image with fracture but without cardiomegaly,113,0.0,0.3333333333333333,0.6,0.0,1.0,1.0
+an image with fracture but without consolidation,158,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+an image with fracture but without edema,138,0.0,0.3333333333333333,0.4,0.0,1.0,1.0
+an image with fracture but without lung lesion,157,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+an image with fracture but without lung opacity,134,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+an image with fracture but without pleural effusion,119,0.0,0.3333333333333333,0.4,0.0,1.0,1.0
+an image with fracture but without pneumonia,149,0.0,0.3333333333333333,0.4,0.0,1.0,1.0
+an image with fracture but without pneumothorax,161,0.0,0.0,0.0,0.0,0.0,0.0
+an image with lung lesion but without atelectasis,153,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+an image with lung lesion but without cardiomegaly,162,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+an image with lung lesion but without consolidation,167,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+an image with lung lesion but without edema,175,1.0,0.6666666666666666,0.4,1.0,1.0,1.0
+an image with lung lesion but without fracture,193,0.0,0.0,0.0,0.0,0.0,0.0
+an image with lung lesion but without lung opacity,93,0.0,0.0,0.0,0.0,0.0,0.0
+an image with lung lesion but without pleural effusion,128,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+an image with lung lesion but without pneumonia,139,0.0,0.0,0.0,0.0,0.0,0.0
+an image with lung lesion but without pneumothorax,192,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+an image with lung opacity but without atelectasis,955,0.0,0.0,0.2,0.0,0.0,1.0
+an image with lung opacity but without cardiomegaly,1134,1.0,0.6666666666666666,0.6,1.0,1.0,1.0
+an image with lung opacity but without consolidation,1366,0.0,0.3333333333333333,0.4,0.0,1.0,1.0
+an image with lung opacity but without edema,1088,0.0,0.3333333333333333,0.4,0.0,1.0,1.0
+an image with lung opacity but without fracture,1532,1.0,1.0,0.8,1.0,1.0,1.0
+an image with lung opacity but without lung lesion,1439,1.0,0.3333333333333333,0.2,1.0,1.0,1.0
+an image with lung opacity but without pleural effusion,926,0.0,0.3333333333333333,0.4,0.0,1.0,1.0
+an image with lung opacity but without pneumonia,893,0.0,0.0,0.2,0.0,0.0,1.0
+an image with lung opacity but without pneumothorax,1497,1.0,0.6666666666666666,0.4,1.0,1.0,1.0
+an image with pleural effusion but without atelectasis,839,0.0,0.0,0.0,0.0,0.0,0.0
+an image with pleural effusion but without cardiomegaly,968,1.0,0.6666666666666666,0.4,1.0,1.0,1.0
+an image with pleural effusion but without consolidation,1335,0.0,0.3333333333333333,0.6,0.0,1.0,1.0
+an image with pleural effusion but without edema,923,0.0,0.0,0.2,0.0,0.0,1.0
+an image with pleural effusion but without fracture,1499,1.0,0.3333333333333333,0.2,1.0,1.0,1.0
+an image with pleural effusion but without lung lesion,1469,1.0,0.3333333333333333,0.2,1.0,1.0,1.0
+an image with pleural effusion but without lung opacity,950,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+an image with pleural effusion but without pneumonia,1224,0.0,0.3333333333333333,0.4,0.0,1.0,1.0
+an image with pleural effusion but without pneumothorax,1481,1.0,1.0,0.8,1.0,1.0,1.0
+an image with pneumonia but without atelectasis,399,0.0,0.0,0.0,0.0,0.0,0.0
+an image with pneumonia but without cardiomegaly,393,0.0,0.0,0.0,0.0,0.0,0.0
+an image with pneumonia but without consolidation,440,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+an image with pneumonia but without edema,393,0.0,0.0,0.2,0.0,0.0,1.0
+an image with pneumonia but without fracture,531,0.0,0.0,0.0,0.0,0.0,0.0
+an image with pneumonia but without lung lesion,502,0.0,0.0,0.0,0.0,0.0,0.0
+an image with pneumonia but without lung opacity,254,0.0,0.0,0.0,0.0,0.0,0.0
+an image with pneumonia but without pleural effusion,363,0.0,0.0,0.0,0.0,0.0,0.0
+an image with pneumonia but without pneumothorax,526,0.0,0.0,0.0,0.0,0.0,0.0
+an image with pneumothorax but without atelectasis,100,0.0,0.0,0.2,0.0,0.0,1.0
+an image with pneumothorax but without cardiomegaly,123,0.0,0.3333333333333333,0.4,0.0,1.0,1.0
+an image with pneumothorax but without consolidation,136,1.0,0.3333333333333333,0.4,1.0,1.0,1.0
+an image with pneumothorax but without edema,121,0.0,0.0,0.0,0.0,0.0,0.0
+an image with pneumothorax but without fracture,138,0.0,0.0,0.0,0.0,0.0,0.0
+an image with pneumothorax but without lung lesion,138,1.0,1.0,0.6,1.0,1.0,1.0
+an image with pneumothorax but without lung opacity,92,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+an image with pneumothorax but without pleural effusion,90,1.0,0.6666666666666666,0.4,1.0,1.0,1.0
+an image with pneumothorax but without pneumonia,124,0.0,0.3333333333333333,0.2,0.0,1.0,1.0

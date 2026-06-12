@@ -24,7 +24,7 @@ from torchvision import transforms
 log = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).parent.parent
-MAX_TEXT_LEN = 128  # ClinicalBERT context length
+MAX_TEXT_LEN = 32  # label captions are ≤10 tokens; 32 is safe and saves seq_len² attention memory
 
 
 class ClinicalBERTTokenizerWrapper:
@@ -96,21 +96,21 @@ class CXRClipFinetuneModel(nn.Module):
       logit_scale: nn.Parameter
     """
 
-    def __init__(self, checkpoint_path: str):
+    def __init__(self, checkpoint_path: str, freeze_image_encoder: bool = True):
         super().__init__()
 
         cxr_model, cfg, hf_tokenizer = _load_cxrclip(checkpoint_path)
 
-        # ── Image side (frozen) ───────────────────────────────────────────────
+        # ── Image side ────────────────────────────────────────────────────────
         self.image_encoder = cxr_model.image_encoder
         self.image_projection = cxr_model.image_projection if cxr_model.projection else None
         self._image_encoder_name = cfg["model"]["image_encoder"]["name"]
 
         for p in self.image_encoder.parameters():
-            p.requires_grad_(False)
+            p.requires_grad_(not freeze_image_encoder)
         if self.image_projection is not None:
             for p in self.image_projection.parameters():
-                p.requires_grad_(False)
+                p.requires_grad_(not freeze_image_encoder)
 
         # ── Text side (trainable) ─────────────────────────────────────────────
         self.text_encoder = cxr_model.text_encoder   # HuggingfaceTextEncoder wrapper
@@ -127,9 +127,10 @@ class CXRClipFinetuneModel(nn.Module):
         self._checkpoint_path = checkpoint_path
         self._image_size = cfg.get("base", {}).get("image_size", 224)
 
+        img_status = "frozen" if freeze_image_encoder else "trainable"
         log.info(
             "CXRClipFinetuneModel ready — "
-            f"image_encoder={self._image_encoder_name} (frozen), "
+            f"image_encoder={self._image_encoder_name} ({img_status}), "
             f"text_encoder=Bio_ClinicalBERT (trainable), "
             f"pooling={self._text_pooling}"
         )

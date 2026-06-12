@@ -104,9 +104,10 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     # Model
-    p.add_argument("--base-model", required=True,
+    p.add_argument("--base-model", default=None,
                    help="open_clip model name, e.g. ViT-B-32 or "
                         "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224. "
+                        "Required unless --cxrclip-finetune is set. "
                         "When --cxrclip-checkpoint is set, this specifies the OpenCLIP text "
                         "encoder used in the hybrid model (e.g. ViT-B-32 --pretrained openai).")
     p.add_argument("--pretrained", default="",
@@ -121,6 +122,10 @@ def parse_args():
                         "CXR-CLIP image encoder + trainable CXR-CLIP Bio_ClinicalBERT text "
                         "encoder via LoRA. Use --lora-modules 'query,key,value,dense' and "
                         "--lora-target both. E.g. valid_pretrained_models_to_try/r50_mc.pt")
+    p.add_argument("--unfreeze-image-encoder", action="store_true",
+                   help="When using --cxrclip-finetune, unfreeze the image encoder for "
+                        "full fine-tuning alongside the LoRA text encoder. "
+                        "Default: image encoder is frozen.")
     # Data
     p.add_argument("--train-csv", required=False,default="cxr_data/mimic_cxr_train.csv")
     p.add_argument("--image-dir", required=False,default="cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/")
@@ -507,6 +512,9 @@ class EarlyStopping:
 def main():
     args = parse_args()
 
+    if args.base_model is None and args.cxrclip_finetune is None:
+        raise SystemExit("error: --base-model is required unless --cxrclip-finetune is set")
+
     local_rank, rank, world_size, is_main = setup_distributed()
     # Different seed per rank so each GPU sees a different data shuffle
     torch.manual_seed(args.seed + rank)
@@ -552,7 +560,10 @@ def main():
                 "image encoder frozen, Bio_ClinicalBERT text encoder trainable via LoRA"
             )
         from train.cxrclip_finetune_model import CXRClipFinetuneModel
-        model = CXRClipFinetuneModel(args.cxrclip_finetune)
+        model = CXRClipFinetuneModel(
+            args.cxrclip_finetune,
+            freeze_image_encoder=not args.unfreeze_image_encoder,
+        )
         preprocess_train = CXRClipFinetuneModel.make_preprocess(args.cxrclip_finetune)
         tokenizer = model.make_tokenizer()
     elif args.cxrclip_checkpoint:
@@ -583,6 +594,18 @@ def main():
 
     # ── Apply LoRA ────────────────────────────────────────────────────────────
     model = apply_lora(model, args)
+
+    # peft's get_peft_model re-freezes all base params; re-enable image encoder
+    # grad after the fact when --unfreeze-image-encoder was requested.
+    if args.cxrclip_finetune and args.unfreeze_image_encoder:
+        n_unfrozen = 0
+        for name, param in model.named_parameters():
+            if "image_encoder" in name or "image_projection" in name:
+                param.requires_grad_(True)
+                n_unfrozen += param.numel()
+        if is_main:
+            log.info(f"Unfroze image encoder: {n_unfrozen:,} additional trainable params")
+            model.print_trainable_parameters()
 
     if args.resume:
         if is_main:

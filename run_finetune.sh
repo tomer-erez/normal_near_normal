@@ -1,28 +1,27 @@
 #!/bin/bash
-# Fine-tune the CXR-CLIP r50_mc checkpoint.
+# Fine-tune the CXR-CLIP swint_mc checkpoint.
 #
-# Architecture: frozen ResNet50 image encoder (strong medical features)
-#               + trainable Bio_ClinicalBERT text encoder via LoRA.
+# Architecture: frozen SwinT image encoder + trainable Bio_ClinicalBERT text encoder.
+# Both encoders are transformers so LoRA applies to both via the same module names
+# (query, key, value, dense) — image and text adapt at ~2% trainable params each.
+# This gives a fair parameter-budget comparison with the ViT-B-32 LoRA models.
 #
-# LoRA targets: ClinicalBERT Q/K/V attention layers + all dense (FFN) layers.
-# Loss:         label_dot clip — soft multi-positive labels, nan=ignore.
-# LR:           5e-5 (lower than ViT-B-32 because ClinicalBERT is BERT-scale).
+# Loss: label_dot clip — soft multi-positive labels, nan=ignore.
 
-name="test_cxrclip_finetune_r50_labeldot"
+name="cxrclip_swint_labeldot"
 set -e
 cd "$(dirname "$0")"
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate thesis_clip
 mkdir -p logs experiments/$name
 tmux new-session -d -s $name "
-    CUDA_VISIBLE_DEVICES=0 torchrun --nproc_per_node=1 --master_port=29511 train_lora.py \
-        --cxrclip-finetune ./valid_pretrained_models_to_try/r50_mc.pt \
+    CUDA_VISIBLE_DEVICES=1,2,3,4 torchrun --nproc_per_node=4 --master_port=29502 train_lora.py \
+        --cxrclip-finetune ./valid_pretrained_models_to_try/swint_mc.pt \
         --precision bf16 \
-        --lr 5e-5 \
+        --lr 1e-5 \
         --min-lr 1e-8 \
-        --batch-size 6 \
-        --max-samples 36 \
-        --epochs 10 \
+        --batch-size 64 \
+        --epochs 100 \
         --warmup-epochs 5 \
         --patience 10 \
         --nan-mode ignore \
@@ -30,7 +29,7 @@ tmux new-session -d -s $name "
         --caption-mode all \
         --match-mode label_dot \
         --lora-r 16 \
-        --lora-alpha 32 \
+        --lora-alpha 16 \
         --lora-dropout 0.05 \
         --lora-target both \
         --lora-modules \"query,key,value,dense\" \

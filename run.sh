@@ -1,6 +1,6 @@
 #!/bin/bash
 
-name="claude_hyperparms_label_dot_clip_r32_a32"
+name="labeldot"
 set -e
 cd "$(dirname "$0")"
 source ~/miniconda3/etc/profile.d/conda.sh
@@ -21,8 +21,8 @@ tmux new-session -d -s $name "
         --loss clip \
         --caption-mode all \
         --match-mode label_dot \
-        --lora-r 32 \
-        --lora-alpha 32 \
+        --lora-r 16 \
+        --lora-alpha 16 \
         --output-dir ./experiments/$name \
         --wandb-project mimic-cxr-clip \
         --wandb-run-name $name \

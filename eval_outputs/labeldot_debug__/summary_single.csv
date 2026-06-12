@@ -1,0 +1,11 @@
+query,n_relevant,cxrclip_swint_labeldot_P@1,cxrclip_swint_labeldot_P@3,cxrclip_swint_labeldot_P@5,cxrclip_swint_labeldot_R@1,cxrclip_swint_labeldot_R@3,cxrclip_swint_labeldot_R@5
+atelectasis,1034,0.0,0.0,0.2,0.0,0.0,1.0
+cardiomegaly,1258,0.0,0.3333333333333333,0.4,0.0,1.0,1.0
+consolidation,326,0.0,0.3333333333333333,0.4,0.0,1.0,1.0
+edema,959,1.0,0.3333333333333333,0.6,1.0,1.0,1.0
+fracture,167,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
+lung lesion,202,0.0,0.0,0.0,0.0,0.0,0.0
+lung opacity,1561,1.0,0.3333333333333333,0.6,1.0,1.0,1.0
+pleural effusion,1542,1.0,1.0,1.0,1.0,1.0,1.0
+pneumonia,539,0.0,0.3333333333333333,0.6,0.0,1.0,1.0
+pneumothorax,144,0.0,0.3333333333333333,0.2,0.0,1.0,1.0
