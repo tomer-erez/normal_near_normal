@@ -242,3 +242,8 @@ more_models_to_try/
 valid_pretrained_models_to_try/
 
 models_to_try/
+
+baseline_output/
+eval_outputs/baseline_output_official_test
+eval_outputs/
+experiments/
