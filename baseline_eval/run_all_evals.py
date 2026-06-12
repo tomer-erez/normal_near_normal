@@ -66,7 +66,7 @@ LABEL_TO_IDX = {col: i for i, col in enumerate(LABEL_COLS)}
 SHORT_LABELS = [l.replace("Enlarged Cardiomediastinum", "Enlarged CM") for l in CHEXPERT_LABELS]
 
 MODELS = [
-    {"name": "vanilla_clip_not_trained",  "model_type": "vanilla_clip",  "checkpoint": None},
+    # {"name": "vanilla_clip_not_trained",  "model_type": "vanilla_clip",  "checkpoint": None},
     # {"name": "biomedclip",    "model_type": "biomedclip",    "checkpoint": None},
     # {"name": "cxrclip_r50_m",   "model_type": "cxrclip", "checkpoint": "r50_m.pt"},
     {"name": "cxrclip_r50_mc",  "model_type": "cxrclip", "checkpoint": "r50_mc.pt"},
@@ -101,24 +101,24 @@ MODELS = [
     # },
 
     
-    {
-        "name": "caption_mode_all_clip",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/caption_mode_all_clip/final_merged.pt",
-    },
+    # {
+    #     "name": "caption_mode_all_clip",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/caption_mode_all_clip/final_merged.pt",
+    # },
 
     
-    {
-        "name": "label_dot_cliploss",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/label_dot_cliploss/final_merged.pt",
-    },   
+    # {
+    #     "name": "label_dot_cliploss",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/label_dot_cliploss/final_merged.pt",
+    # },   
                                                                         
     # {
     #     "name": "label_dot_sigliploss",
@@ -139,13 +139,13 @@ MODELS = [
     },   
                                                                         
 
-    {
-        "name": "cxrclip_r50_labeldot_unfrozen",
-        "model_type": "cxrclip_finetune",
-        "checkpoint": None,
-        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/r50_mc.pt",
-        "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_r50_labeldot_unfrozen/final_merged.pt",
-    },
+    # {
+    #     "name": "cxrclip_r50_labeldot_unfrozen",
+    #     "model_type": "cxrclip_finetune",
+    #     "checkpoint": None,
+    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/r50_mc.pt",
+    #     "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_r50_labeldot_unfrozen/final_merged.pt",
+    # },
     # {
     #     "name": "cxrclip_swint_labeldot",
     #     "model_type": "cxrclip_finetune",

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-name="comp_dot_label_new"
+name="ref_vs_my_best"
 set -e
 cd "$(dirname "$0")"
 source ~/miniconda3/etc/profile.d/conda.sh
