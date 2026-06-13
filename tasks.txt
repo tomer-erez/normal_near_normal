@@ -27,3 +27,11 @@ claude's idea for better pair results and better results overall creqte a branch
 
 
 validate best results from the paper vs ours
+
+wait for those to finish and analyze:
+(base) tomererez@floria:~/normal_near_normal$ tmux ls
+c_fixes_for_better_pair_ft_from_swint: 1 windows (created Sat Jun 13 15:23:31 2026) (attached)
+claude_Fixes_to_improve_pair: 1 windows (created Sat Jun 13 15:20:44 2026) (attached)
+labeldot_nanmode_negative_from_scratch: 1 windows (created Sat Jun 13 10:12:39 2026) (attached)
+labeldot_nanmode_negative_from_swint: 1 windows (created Sat Jun 13 10:14:45 2026) (attached)
+(base) tomererez@floria:~/normal_near_normal$ 
