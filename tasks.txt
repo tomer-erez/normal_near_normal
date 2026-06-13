@@ -1,14 +1,12 @@
 ablations generaly: losses hyper params, how we did with oracle on small data for params and methods decision
 
-moshe hnrr analysis in hte tex
-
-a visual figure which shows where other models fail in composite queries
-
-linguistic robustness
+moshe hnrr analysis in the tex
 
 moshe sent whatsapp to review some paper
 
 fine tune of swint vs from scratch what works best?
+
+be more clear in how we treat nans, its a bit מפוזר 
 
 from all my metrics decide what we keep
 
