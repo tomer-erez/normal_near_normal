@@ -134,7 +134,7 @@ def parse_args():
     p.add_argument("--val-split", type=float, default=0.1,
                    help="Fraction of training data held out for validation when --val-csv is not given. "
                         "Set to 0 to disable validation entirely.")
-    p.add_argument("--caption-mode", default="both", choices=["single", "pair", "both", "negative", "all"])
+    p.add_argument("--caption-mode", default="all", choices=["single", "pair", "both", "negative", "all"])
     p.add_argument("--nan-mode", default="negative", choices=["negative", "ignore"],
                    help="How to encode NaN (not-mentioned) labels. "
                         "'negative' (default): NaN and CSV 0 are both treated as absent (-1.0). "
@@ -143,7 +143,7 @@ def parse_args():
                    help="Cap dataset size (useful for debugging)")
     # LoRA
     p.add_argument("--lora-r", type=int, default=16, help="LoRA rank")
-    p.add_argument("--lora-alpha", type=int, default=32)
+    p.add_argument("--lora-alpha", type=int, default=16)
     p.add_argument("--lora-dropout", type=float, default=0.05)
     p.add_argument("--lora-target", default="both", choices=["image", "text", "both"],
                    help="Which encoder(s) to apply LoRA to")
@@ -151,7 +151,7 @@ def parse_args():
                    help="Comma-separated module name substrings to target with LoRA")
     # Training
     p.add_argument("--output-dir", required=True)
-    p.add_argument("--epochs", type=int, default=500)
+    p.add_argument("--epochs", type=int, default=100)
     p.add_argument("--batch-size", type=int, default=64,
                    help="Per-GPU batch size. Effective batch = batch-size * grad-accum-steps * world-size")
     p.add_argument("--lr", type=float, default=1e-4)
@@ -173,7 +173,7 @@ def parse_args():
     p.add_argument("--warmup-epochs", type=int, default=None,
                    help="Linear warmup epochs. Default: epochs // 10.")
     # Early stopping
-    p.add_argument("--patience", type=int, default=5,
+    p.add_argument("--patience", type=int, default=10,
                    help="Early stopping patience in epochs (0 to disable)")
     # Label-aware loss
     p.add_argument("--match-mode", default="standard",

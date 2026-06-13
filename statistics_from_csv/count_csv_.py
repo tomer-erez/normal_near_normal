@@ -134,8 +134,7 @@ for label, s in counts.items():
         "value": label,
         "=0":    f"{(s==0).mean():.1%}",
         "=1":    f"{(s==1).mean():.1%}",
-        ">1":    f"{(s >1).mean():.1%}",
-        ">4":    f"{(s >4).mean():.1%}",
+        "=2":    f"{(s==2).mean():.1%}",
 
     })
 print(pd.DataFrame(rows).to_string(index=False))
@@ -156,3 +155,63 @@ print(f"Samples with at least 1 positive and at least 1 uncertain label: {both_p
 at_least_1_nan = df[chexpert_cols].isna().any(axis=1)
 both_pos_nan = (at_least_1_pos & at_least_1_nan).sum()
 print(f"Samples with at least 1 positive and at least 1 NaN label: {both_pos_nan:,} ({both_pos_nan/len(df):.3%})")  
+
+# how many have at least two positive labels?
+at_least_2_pos = (df[chexpert_cols] == 1).sum(axis=1) >= 2
+print(f"Samples with at least 2 positive labels: {at_least_2_pos.sum():,} ({at_least_2_pos.mean():.3%})")
+
+# at least 1 positive label?
+at_least_1_pos = (df[chexpert_cols] == 1).any(axis=1)
+print(f"Samples with at least 1 positive label: {at_least_1_pos.sum():,} ({at_least_1_pos.mean():.3%})")    
+
+#avg number of ones for a label in the dataset
+avg_num_ones_per_label = (df[chexpert_cols] == 1).mean().mean()
+print(f"Average number of positive labels per sample: {avg_num_ones_per_label:.3f} ({avg_num_ones_per_label*100:.1f}%)")
+
+# Summary table: rows with 0 / 1 / >1 occurrences of each label value
+print("\nPer-row count breakdown (counts and % of rows):")
+value_defs = [
+    ("1  (pos)", (df[chexpert_cols] == 1).sum(axis=1)),
+    ("0  (neg)", (df[chexpert_cols] == 0).sum(axis=1)),
+    ("-1 (unc)", (df[chexpert_cols] == -1).sum(axis=1)),
+    ("NaN     ", df[chexpert_cols].isna().sum(axis=1)),
+]
+n = len(df)
+rows = []
+for label, s in value_defs:
+    rows.append({
+        "value":   label,
+        "0 rows":  f"{(s == 0).sum():,} ({(s == 0).mean():.1%})",
+        "1 rows":  f"{(s == 1).sum():,} ({(s == 1).mean():.1%})",
+        ">1 rows": f"{(s > 1).sum():,} ({(s > 1).mean():.1%})",
+    })
+print(pd.DataFrame(rows).to_string(index=False))
+
+# Per-pathology co-occurrence stats
+print("\n" + "="*60)
+print("Per-pathology co-occurrence statistics (positive labels only)")
+print("="*60)
+
+pos = (df[chexpert_cols] == 1).astype(int)
+short_names = [c.split("chexpert_")[1] for c in chexpert_cols]
+pos.columns = short_names
+
+# Co-occurrence count matrix: how many samples have both i and j positive
+cooccur_counts = pos.T @ pos
+print("\nCo-occurrence count matrix (both positive):")
+print(cooccur_counts.to_string())
+
+# Conditional probability: P(col_j = 1 | col_i = 1)
+col_totals = pos.sum()
+cond_prob = cooccur_counts.div(col_totals, axis=0)
+pd.options.display.float_format = "{:.3f}".format
+print("\nConditional probability matrix P(col=1 | row=1):")
+print(cond_prob.to_string())
+
+# Per-pathology summary: top co-occurring pathologies
+print("\nTop co-occurrences per pathology (excluding self):")
+for path in short_names:
+    row = cond_prob.loc[path].drop(path).sort_values(ascending=False)
+    top3 = ", ".join(f"{p}={v:.3f}" for p, v in row.head(3).items())
+    n_pos = int(col_totals[path])
+    print(f"  {path:<30s} (n={n_pos:6,})  top-3: {top3}")

@@ -311,7 +311,7 @@ def build_queries(query_mode: str = "all",
       single   13 queries  "atelectasis"
       pair     78 queries  "atelectasis and edema"
       negative 156 queries — phrasing controlled by neg_template
-      all      all of the above (247 total)
+      all      all of the above (403 total)
 
     neg_template: Python format string with {pos} and {neg} placeholders.
       Default:  "{pos} and no {neg}"           e.g. "atelectasis and no edema"
@@ -401,7 +401,7 @@ def main():
                              "'single': 13 single-label queries. "
                              "'pair': 78 two-label AND queries. "
                              "'negative': 156 'yes A and no B' queries (uses label=0 in CSV). "
-                             "'all': all 247 queries (default).")
+                             "'all': all 403 queries (default).")
     parser.add_argument("--cxrclip_checkpoint", default=None,
                         help="Path to CXR-CLIP .tar checkpoint (required for --model_type cxrclip)")
     parser.add_argument("--finetuned_base_model", default=None,

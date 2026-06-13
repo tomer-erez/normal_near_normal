@@ -1,19 +1,35 @@
 ablations generaly: losses hyper params, how we did with oracle on small data for params and methods decision
 
-moshe hnrr analysis in hte tex
-
-a visual figure which shows where other models fail in composite queries
-
-linguistic robustness
+moshe hnrr analysis in the tex
 
 moshe sent whatsapp to review some paper
 
 fine tune of swint vs from scratch what works best?
 
+be more clear in how we treat nans, its a bit מפוזר 
+
 from all my metrics decide what we keep
 
 two big ones:
 1.now that we are not repelling, why not do a and not b where b can be nan as well? sounds smarter, richer signal , more images right?
+running it now one for scarch vs one for finetune: nan mode in both is negative
 i think adding that to ablations could be cool
 
 2. ways to improve the pair ask claude? algorithmically i mean
+
+better explanation of why we handle nan the way we do in train and eval, or compare addressing it as ignore vs negative
+
+train with a higher lora rank or larger model so we guarantee a sota model
+
+claude's idea for better pair results and better results overall creqte a branch and work from it
+
+
+validate best results from the paper vs ours
+
+wait for those to finish and analyze:
+(base) tomererez@floria:~/normal_near_normal$ tmux ls
+c_fixes_for_better_pair_ft_from_swint: 1 windows (created Sat Jun 13 15:23:31 2026) (attached)
+claude_Fixes_to_improve_pair: 1 windows (created Sat Jun 13 15:20:44 2026) (attached)
+labeldot_nanmode_negative_from_scratch: 1 windows (created Sat Jun 13 10:12:39 2026) (attached) WORST OPTION OF THEM ALL GOT AWFULT EVAL RESULTS
+labeldot_nanmode_negative_from_swint: 1 windows (created Sat Jun 13 10:14:45 2026) (attached)
+(base) tomererez@floria:~/normal_near_normal$ 

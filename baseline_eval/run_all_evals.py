@@ -66,7 +66,7 @@ LABEL_TO_IDX = {col: i for i, col in enumerate(LABEL_COLS)}
 SHORT_LABELS = [l.replace("Enlarged Cardiomediastinum", "Enlarged CM") for l in CHEXPERT_LABELS]
 
 MODELS = [
-    # {"name": "vanilla_clip_not_trained",  "model_type": "vanilla_clip",  "checkpoint": None},
+    {"name": "vanilla_clip_not_trained",  "model_type": "vanilla_clip",  "checkpoint": None},
     # {"name": "biomedclip",    "model_type": "biomedclip",    "checkpoint": None},
     # {"name": "cxrclip_r50_m",   "model_type": "cxrclip", "checkpoint": "r50_m.pt"},
     {"name": "cxrclip_r50_mc",  "model_type": "cxrclip", "checkpoint": "r50_mc.pt"},
@@ -146,15 +146,50 @@ MODELS = [
     #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/r50_mc.pt",
     #     "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_r50_labeldot_unfrozen/final_merged.pt",
     # },
-    {
-        "name": "labeldot_finetune_swintmc",
-        "model_type": "cxrclip_finetune",
+    # {
+    #     "name": "labeldot_finetune_swintmc",
+    #     "model_type": "cxrclip_finetune",
+    #     "checkpoint": None,
+    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
+    #     "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_swint_labeldot/final_merged.pt",
+    # },
+    
+    #     {
+    #     "name": "labeldot_nanmode_negative_from_swint",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/labeldot_nanmode_negative_from_swint/final_merged.pt",
+    # },   
+        
+    #         {
+    #     "name": "labeldot_nanmode_negative_from_scratch",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/labeldot_nanmode_negative_from_scratch/final_merged.pt",
+    # },   
+            
+                {
+        "name": "claude_Fixes_to_improve_pair_from_vanilla",
+        "model_type": "finetuned",
         "checkpoint": None,
-        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-        "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_swint_labeldot/final_merged.pt",
-    },
-
-]
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/claude_Fixes_to_improve_pair/final_merged.pt",
+    },   
+                
+    #                 {
+    #     "name": "c_fixes_for_better_pair_ft_from_swint",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/c_fixes_for_better_pair_ft_from_swint/final_merged.pt",
+    # },   
+ ]
 
 KS = [1, 3, 5]
 METRIC_COLS = [f"P@{k}" for k in KS] + [f"R@{k}" for k in KS]
@@ -164,12 +199,8 @@ HNRR_COLS  = [f"HNRR@{k}" for k in KS]   # only meaningful for negative query ty
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def results_path(model: dict) -> Path:
-    if model["model_type"] in ("finetuned", "cxrclip_hybrid", "cxrclip_finetune"):
-        return REPO_ROOT / f"results_{model['name']}.csv"
-    if model.get("checkpoint"):
-        stem = Path(model["checkpoint"]).stem
-        return REPO_ROOT / f"results_cxrclip_{stem}.csv"
-    return REPO_ROOT / f"results_{model['model_type']}.csv"
+    # eval_model.py always receives --name and saves to results_{name}.csv
+    return REPO_ROOT / f"results_{model['name']}.csv"
 
 
 def results_strict_path(model: dict) -> Path:

@@ -42,7 +42,31 @@ python baseline_eval/run_all_evals.py \
     --output_dir ./eval_outputs/all_results --batch_size 64 \
 ```
 
-Add `--skip_existing` to skip models already evaluated. Produces per-model result CSVs, `summary_macro.csv`, and plots in `--output_dir`.
+Add `--skip_existing` to skip models already evaluated.
+
+Each model is evaluated in **four passes** automatically:
+
+| Pass | `nan_mode` | `neg_template` | Output type |
+|------|-----------|----------------|-------------|
+| 1 | `negative` | default (`"A and no B"`) | `single`, `pair`, `negative_nan` |
+| 2 | `ignore` | default | `negative_strict` |
+| 3 | `negative` | robust (`"an image with A but without B"`) | `negative_robust_nan` |
+| 4 | `ignore` | robust | `negative_robust_strict` |
+
+Output files in `--output_dir`:
+- `summary_single.csv`, `summary_pair.csv`
+- `summary_negative_nan.csv`, `summary_negative_strict.csv`
+- `summary_negative_robust_nan.csv`, `summary_negative_robust_strict.csv`
+- `summary_macro.csv` — one row per model, all metrics
+- `plots/` — bar charts, heatmaps, publication-style table PNGs
+
+#### Evaluation Metrics
+
+| Metric | Description |
+|--------|-------------|
+| P@K | Precision at K — fraction of top-K retrieved images that satisfy all query constraints, macro-averaged |
+| R@K | Recall at K — 1 if any relevant image appears in top-K, else 0 (binary), macro-averaged |
+| HNRR@K | Hard Negative Retrieval Rate — for `"A and no B"` queries: fraction of top-K results where both A and B are confirmed present (direct violation of the negation). Lower is better; 0 = no retrieved image violates the negation. Only reported for negative-type queries. |
 
 #### Adding a fine-tuned model to `run_all_evals.py`
 
@@ -196,12 +220,22 @@ Use `--nan-mode ignore` when:
 
 ## Knob 5 — Query Mode (`--query_mode`, eval only)
 
+10 CheXpert labels are used (4 excluded: No Finding, Enlarged Cardiomediastinum, Pleural Other, Support Devices).
+
 | Mode | # Queries | Format | Relevant images |
 |------|-----------|--------|----------------|
-| `single` | 13 | `"atelectasis"` | label_A == 1 |
-| `pair` | 78 | `"atelectasis and edema"` | label_A == 1 AND label_B == 1 |
-| `negative` | 156 | `"atelectasis and no edema"` | label_A == 1 AND label_B == 0/NaN |
-| `all` | 247 | all of the above | *(default)* |
+| `single` | 10 | `"atelectasis"` | label_A == 1 |
+| `pair` | 45 | `"atelectasis and edema"` | label_A == 1 AND label_B == 1 |
+| `negative` | 90 | `"atelectasis and no edema"` | label_A == 1 AND label_B == 0/NaN |
+| `all` | 145 | all of the above | *(default)* |
+
+The text format for negative queries is controlled by `--neg-template`:
+- Default: `"{pos} and no {neg}"` → e.g. `"atelectasis and no edema"`
+- Robust: `"an image with {pos} but without {neg}"` — used by `run_all_evals.py` for robustness passes 3 & 4
+
+Relevance for negative queries depends on `--nan-mode`:
+- **lenient** (`--nan-mode negative`): NaN and CSV 0 both count as absent (image is relevant if neg label == 0 OR NaN)
+- **strict** (`--nan-mode ignore`): only CSV 0 counts as absent (NaN images are excluded from relevant set)
 
 ---
 
@@ -256,7 +290,7 @@ CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 train_lora.py \
     --base-model ViT-B-32 --pretrained openai \
     --precision bf16 \
     --lr 1e-4 --min-lr 1e-8 \
-    --batch-size 90 --epochs 100 \
+    --batch-size 64 --epochs 100 \
     --warmup-epochs 5 --patience 10 \
     --nan-mode ignore \
     --loss clip \
@@ -266,7 +300,7 @@ CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 train_lora.py \
     --output-dir ./experiments/label_dot
 ```
 
-> Soft target T_ij = max(y_i·y_j, 0) / row_sum. Conflicting pairs (K < 0) get T = 0 and are treated as ordinary negatives — no explicit repulsion, no hinge. `--caption-mode all` (50% single / 25% pair / 25% negation captions) ensures full coverage of all query tiers. `--nan-mode ignore` means only explicitly ruled-out labels (CSV 0) count as −1; NaN ("not mentioned") is 0. Best results with 2 GPUs × 90 per-GPU batch = 180 effective batch size.
+> Soft target T_ij = max(y_i·y_j, 0) / row_sum. Conflicting pairs (K < 0) get T = 0 and are treated as ordinary negatives — no explicit repulsion, no hinge. `--caption-mode all` (50% single / 25% pair / 25% negation captions) ensures full coverage of all query tiers. `--nan-mode ignore` means only explicitly ruled-out labels (CSV 0) count as −1; NaN ("not mentioned") is 0. Best results with 2 GPUs × 64 per-GPU batch = 128 effective batch size.
 
 ### Idea 5b — Graded SigLIP
 ```bash

@@ -93,6 +93,14 @@ python baseline_eval/run_all_evals.py \
     --output_dir ./experiments/my_exp1 --batch_size 64 [--skip_existing]
 ```
 
+`run_all_evals.py` runs **4 passes per model** automatically:
+1. `nan_mode=negative`, default template → `single`, `pair`, `negative_nan`
+2. `nan_mode=ignore`, default template → `negative_strict`
+3. `nan_mode=negative`, robust template (`"an image with A but without B"`) → `negative_robust_nan`
+4. `nan_mode=ignore`, robust template → `negative_robust_strict`
+
+Produces `summary_single.csv`, `summary_pair.csv`, `summary_negative_nan.csv`, `summary_negative_strict.csv`, `summary_negative_robust_*.csv`, `summary_macro.csv`, and plots in `--output_dir`.
+
 To add a fine-tuned model to the multi-eval run, edit the `MODELS` list in `baseline_eval/run_all_evals.py`.
 
 ### Running Tests
@@ -115,8 +123,8 @@ python -m pytest tests/test_training_simple.py::test_training_simple -v   # sing
 - `baseline_eval/`
   - `build_official_test_set.py` — Filters the 377k-row CSV to the 5,159 official MIMIC-CXR test images
   - `build_baseline.py` — Creates symlinks for the test image gallery
-  - `eval_model.py` — Unified evaluation for vanilla_clip / biomedclip / cxrclip / finetuned backends; reports P@1/5/10 and R@1/5/10
-  - `run_all_evals.py` — Loops over a `MODELS` list and calls `eval_model.py` for each
+  - `eval_model.py` — Unified evaluation for `vanilla_clip` / `biomedclip` / `cxrclip` / `finetuned` / `cxrclip_hybrid` / `cxrclip_finetune` backends; reports P@K, R@K, and HNRR@K (Hard Negative Retrieval Rate)
+  - `run_all_evals.py` — Loops over a `MODELS` list and calls `eval_model.py` for each model in 4 passes (lenient/strict × default/robust template); produces per-type summary CSVs and plots
 - `core/` — Legacy data loaders (not used by the current LoRA training pipeline)
 - `open_clip/` — Vendored OpenCLIP library (`src/open_clip/`, `src/open_clip_train/`, `tests/`)
 - `cxr_data/` — CSVs: `all_txt_data_and_labels.csv` (full), `mimic_cxr_train.csv`, `mimic_cxr_official_test.csv`
@@ -144,8 +152,10 @@ MIMIC-CXR JPG images: `/mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/
 - `clip` (default): softmax multi-positive cross-entropy
 - `siglip`: sigmoid binary cross-entropy per pair (decoupled from batch size; SigLIP model checkpoints have a learned `logit_bias` that is picked up automatically)
 
-**`--query_mode`** (eval only):
-- `single` (13 queries), `pair` (78), `negative` (156, "atelectasis and no edema"), `all` (247, default)
+**`--query_mode`** (eval only, 10 CheXpert labels used):
+- `single` (10 queries), `pair` (45), `negative` (90, "atelectasis and no edema"), `all` (145, default)
+- `--neg-template`: format string for negative queries; default `"{pos} and no {neg}"`; robust variant `"an image with {pos} but without {neg}"`
+- Negative query relevance: `--nan-mode negative` (lenient, NaN=absent) vs `--nan-mode ignore` (strict, only CSV 0=absent)
 
 ### Label Encoding
 
