@@ -1,6 +1,6 @@
 #!/bin/bash
 
-name="ref_vs_my_best"
+name="ref_vs_usFromVanilla_vs_usFineTuneSwint"
 set -e
 cd "$(dirname "$0")"
 source ~/miniconda3/etc/profile.d/conda.sh

@@ -11,3 +11,9 @@ moshe sent whatsapp to review some paper
 fine tune of swint vs from scratch what works best?
 
 from all my metrics decide what we keep
+
+two big ones:
+1.now that we are not repelling, why not do a and not b where b can be nan as well? sounds smarter, richer signal , more images right?
+i think adding that to ablations could be cool
+
+2. ways to improve the pair ask claude? algorithmically i mean

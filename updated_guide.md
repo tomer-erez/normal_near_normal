@@ -106,9 +106,12 @@ Controls which (image, text) pairs count as positives in the loss. Standard CLIP
 | `two_label` | Share ≥2 positive labels | Pair with `--caption-mode pair` |
 | `negative_aware` | `single_label` + hinge repulsion for conflict pairs | Use large batch; no grad accum |
 | `graded` | Soft target proportional to number of shared labels | Distinguishes "shares 1" from "shares 2" labels |
-| `image_pair` ⭐ | SigLIP diagonal + image-image attraction & repulsion | **Recommended final mode** |
+| `label_dot` ⭐ | Soft target T_ij = max(y_i·y_j, 0) / row_sum | **Best-performing mode** — selective attraction, no explicit repulsion |
+| `image_pair` | SigLIP diagonal + image-image attraction & repulsion | Explicit image-level attract/repel |
 
-**`image_pair` mode** is the recommended training objective. It combines three loss terms:
+**`label_dot` mode** is the best-performing training objective. For each pair (i, j) it computes a dot product of the label vectors: K(i,j) = y_i · y_j, where positive labels are +1, confirmed-absent labels are −1 (under `--nan-mode ignore` only CSV 0 counts as −1, NaN counts as 0). The soft target is T_ij = max(K, 0) / row_sum. Conflicting pairs (K < 0) get T = 0 — they are neither attracted nor explicitly repelled; they enter the softmax denominator identically to any standard negative pair. Always use with `--nan-mode ignore --caption-mode all --loss clip`.
+
+**`image_pair` mode** combines three loss terms:
 
 1. **Image-text CLIP** (`L_it`): symmetric softmax cross-entropy with diagonal target — each image must rank its own paired caption above all others in the batch, and vice versa.
 2. **Image-image attraction** (`L_attr`, weight `--attract-weight λ_a`): any two images sharing the same confirmed label value (both positive *or* both negative for any label) are pulled closer: `(1 − cosine_sim).mean()` over attract pairs.
@@ -187,7 +190,7 @@ Use `--nan-mode ignore` when:
 - You want only *explicitly ruled-out* labels to define negatives (stricter standard).
 - You are training `negative_aware` and want to suppress spurious conflicts from NaN-labelled images.
 
-> **Recommended default for `negative_aware`:** always pair with `--nan-mode ignore`. Under `--nan-mode negative`, ~78% of off-diagonal pairs are flagged as conflicts (mostly NaN-derived, not genuine contradictions), drowning out the meaningful repulsion signal.
+> **For `negative_aware`:** always pair with `--nan-mode ignore`. Under `--nan-mode negative`, ~78% of off-diagonal pairs are flagged as conflicts (mostly NaN-derived, not genuine contradictions), drowning out the meaningful repulsion signal. The same applies to `label_dot`.
 
 ---
 
@@ -213,7 +216,8 @@ Use `--nan-mode ignore` when:
 | E — SigLIP label-aware | `--loss siglip --match-mode single_label --nan-mode ignore` | General, implicit repulsion |
 | F — SigLIP + negative-aware | `--loss siglip --match-mode negative_aware --negative-weight 0.25 --nan-mode ignore` | Strongest negative repulsion |
 | G — Graded CLIP | `--loss clip --match-mode graded --caption-mode all --nan-mode ignore --batch-size 128` | Graded attraction across all query types |
-| H — Image-pair ⭐ | `--loss clip --match-mode image_pair --caption-mode all --nan-mode ignore --attract-weight 0.1 --repel-weight 0.1` | **Recommended: image-level attraction + repulsion** |
+| H — Image-pair | `--loss clip --match-mode image_pair --caption-mode all --nan-mode ignore --attract-weight 0.1 --repel-weight 0.1` | Image-level attraction + repulsion |
+| I — Label-Dot CLIP ⭐ | `--loss clip --match-mode label_dot --caption-mode all --nan-mode ignore --lora-r 16 --lora-alpha 16` | **Best overall: selective attraction via label dot product** |
 
 ---
 
@@ -246,14 +250,32 @@ python train_lora.py --base-model ViT-B-32 --pretrained openai \
 
 > Use `--nan-mode ignore` to limit conflict detection to explicit label contradictions (CSV 1 vs CSV 0), not NaN-derived ones. Use a large `--batch-size` to get enough conflict pairs per batch. Do not use `--grad-accum-steps > 1` — conflict signal is local to the batch.
 
-### Idea 5 — Graded SigLIP (recommended — best for all three query types) ⭐
+### Idea 5 — Label-Dot CLIP (best overall) ⭐
+```bash
+CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 train_lora.py \
+    --base-model ViT-B-32 --pretrained openai \
+    --precision bf16 \
+    --lr 1e-4 --min-lr 1e-8 \
+    --batch-size 90 --epochs 100 \
+    --warmup-epochs 5 --patience 10 \
+    --nan-mode ignore \
+    --loss clip \
+    --caption-mode all \
+    --match-mode label_dot \
+    --lora-r 16 --lora-alpha 16 \
+    --output-dir ./experiments/label_dot
+```
+
+> Soft target T_ij = max(y_i·y_j, 0) / row_sum. Conflicting pairs (K < 0) get T = 0 and are treated as ordinary negatives — no explicit repulsion, no hinge. `--caption-mode all` (50% single / 25% pair / 25% negation captions) ensures full coverage of all query tiers. `--nan-mode ignore` means only explicitly ruled-out labels (CSV 0) count as −1; NaN ("not mentioned") is 0. Best results with 2 GPUs × 90 per-GPU batch = 180 effective batch size.
+
+### Idea 5b — Graded SigLIP
 ```bash
 python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --match-mode graded --loss siglip \
     --caption-mode all --nan-mode ignore --batch-size 128
 ```
 
-> Graded soft targets weight attraction proportionally to the number of shared positive labels — pairs sharing 2 labels attract twice as strongly as pairs sharing 1. SigLIP's soft BCE handles both attraction and repulsion cleanly. `--caption-mode all` ensures the model sees all three query formats during training. Use a large batch (≥128) so graded weights have enough diversity to be meaningful.
+> Graded soft targets weight attraction proportionally to the number of shared positive labels. SigLIP's soft BCE handles both attraction and repulsion cleanly. Use a large batch (≥128) so graded weights have enough diversity to be meaningful.
 
 ### Idea 6 — SigLIP + single_label (simpler baseline)
 ```bash
@@ -272,7 +294,7 @@ python train_lora.py --base-model ViT-B-32 --pretrained openai \
 
 > SigLIP already repels conflict pairs via target=−1; the hinge adds extra emphasis. Keep `--negative-weight` low (0.1–0.25).
 
-### Idea 7 — Image-pair loss (recommended) ⭐
+### Idea 7 — Image-pair loss
 ```bash
 python train_lora.py --base-model ViT-B-32 --pretrained openai \
     --loss clip --match-mode image_pair \

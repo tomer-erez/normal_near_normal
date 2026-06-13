@@ -1,4 +1,9 @@
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 import pandas as pd
+from constants import LABEL_COLS
 
 print("Loading CSV...")
 df = pd.read_csv(
@@ -6,7 +11,7 @@ df = pd.read_csv(
 )
 print(f"dataset shape: {df.shape}")
 
-chexpert_cols = [col for col in df.columns if col.startswith("chexpert_")]
+chexpert_cols = LABEL_COLS
 
 summary = []
 
@@ -134,3 +139,20 @@ for label, s in counts.items():
 
     })
 print(pd.DataFrame(rows).to_string(index=False))
+
+
+# how many items have at least 1 positive and at least 1 negative label?
+at_least_1_pos = (df[chexpert_cols] == 1).any(axis=1)
+at_least_1_neg = (df[chexpert_cols] == 0).any(axis=1)
+both_pos_neg = (at_least_1_pos & at_least_1_neg).sum()
+print(f"\nSamples with at least 1 positive and at least 1 negative label: {both_pos_neg:,} ({both_pos_neg/len(df):.3%})")
+
+# how many items have at least 1 positive and at least 1 uncertain label?
+at_least_1_unc = (df[chexpert_cols] == -1).any(axis=1)
+both_pos_unc = (at_least_1_pos & at_least_1_unc).sum()
+print(f"Samples with at least 1 positive and at least 1 uncertain label: {both_pos_unc:,} ({both_pos_unc/len(df):.3%})")    
+
+# how many items have at least 1 positive and at least 1 missing?
+at_least_1_nan = df[chexpert_cols].isna().any(axis=1)
+both_pos_nan = (at_least_1_pos & at_least_1_nan).sum()
+print(f"Samples with at least 1 positive and at least 1 NaN label: {both_pos_nan:,} ({both_pos_nan/len(df):.3%})")  

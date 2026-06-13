@@ -130,7 +130,7 @@ MODELS = [
     # },   
     
     {
-        "name": "claude_hyperparms_label_dot_clip",
+        "name": "labeldot_vanilla_clip",
         "model_type": "finetuned",
         "checkpoint": None,
         "finetuned_base_model": "ViT-B-32",
@@ -146,13 +146,13 @@ MODELS = [
     #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/r50_mc.pt",
     #     "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_r50_labeldot_unfrozen/final_merged.pt",
     # },
-    # {
-    #     "name": "cxrclip_swint_labeldot",
-    #     "model_type": "cxrclip_finetune",
-    #     "checkpoint": None,
-    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-    #     "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_swint_labeldot/final_merged.pt",
-    # },
+    {
+        "name": "labeldot_finetune_swintmc",
+        "model_type": "cxrclip_finetune",
+        "checkpoint": None,
+        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
+        "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_swint_labeldot/final_merged.pt",
+    },
 
 ]
 
