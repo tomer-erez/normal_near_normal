@@ -56,7 +56,7 @@ CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 train_lora.py \
     --base-model ViT-B-32 --pretrained openai \
     --precision bf16 \
     --lr 1e-4 --min-lr 1e-8 \
-    --batch-size 90 --epochs 100 \
+    --batch-size 64 --epochs 100 \
     --warmup-epochs 5 --patience 10 \
     --nan-mode ignore \
     --loss clip \
@@ -65,6 +65,8 @@ CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 train_lora.py \
     --lora-r 16 --lora-alpha 16 \
     --output-dir ./experiments/my_run
 ```
+
+Effective batch size: 64 per GPU × 2 GPUs = 128.
 
 Or just run the provided script (launches in a tmux session):
 
@@ -99,7 +101,7 @@ python baseline_eval/run_all_evals.py \
     --batch_size 64
 ```
 
-Add `--skip_existing` to skip models already evaluated.
+Add `--skip_existing` to skip models already evaluated. Each model is evaluated in 4 passes automatically (lenient/strict NaN handling × default/rephrased query templates), producing `summary_negative_nan.csv`, `summary_negative_strict.csv`, `summary_negative_robust_*.csv`, and corresponding plots.
 
 **To include your fine-tuned model**, add an entry to the `MODELS` list in `baseline_eval/run_all_evals.py`:
 
@@ -128,11 +130,13 @@ python baseline_eval/eval_model.py \
 
 | Metric | Description |
 |--------|-------------|
-| P@K | Precision at K — fraction of top-K retrieved images that are relevant |
-| R@K | Recall at K — 1 if any relevant image appears in top-K, else 0 (binary, averaged over queries) |
-| HNRR@K | Hard Negative Retrieval Rate — fraction of top-K results that violate the negation in "A and no B" queries; lower is better |
+| P@K | Precision at K — fraction of top-K retrieved images that satisfy all query constraints, macro-averaged |
+| R@K | Recall at K — 1 if any relevant image appears in top-K, else 0 (binary), macro-averaged |
+| HNRR@K | Hard Negative Retrieval Rate — for `"A and no B"` queries: fraction of top-K results where both A and B are confirmed present; **lower is better** |
 
-Three query tiers: **single** (13 queries), **pair** (78 queries), **negative** (156 queries).
+Three query tiers (10 CheXpert labels active): **single** (10 queries), **pair** (45 queries), **negative** (90 queries per pass).
+
+Negative queries are evaluated twice: *lenient* (`--nan-mode negative`, NaN treated as absent) and *strict* (`--nan-mode ignore`, only explicit CSV 0 counts as absent). A robustness pass also runs with a rephrased template (`"an image with A but without B"`).
 
 ---
 
