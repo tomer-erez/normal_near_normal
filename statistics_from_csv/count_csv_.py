@@ -186,3 +186,32 @@ for label, s in value_defs:
         ">1 rows": f"{(s > 1).sum():,} ({(s > 1).mean():.1%})",
     })
 print(pd.DataFrame(rows).to_string(index=False))
+
+# Per-pathology co-occurrence stats
+print("\n" + "="*60)
+print("Per-pathology co-occurrence statistics (positive labels only)")
+print("="*60)
+
+pos = (df[chexpert_cols] == 1).astype(int)
+short_names = [c.split("chexpert_")[1] for c in chexpert_cols]
+pos.columns = short_names
+
+# Co-occurrence count matrix: how many samples have both i and j positive
+cooccur_counts = pos.T @ pos
+print("\nCo-occurrence count matrix (both positive):")
+print(cooccur_counts.to_string())
+
+# Conditional probability: P(col_j = 1 | col_i = 1)
+col_totals = pos.sum()
+cond_prob = cooccur_counts.div(col_totals, axis=0)
+pd.options.display.float_format = "{:.3f}".format
+print("\nConditional probability matrix P(col=1 | row=1):")
+print(cond_prob.to_string())
+
+# Per-pathology summary: top co-occurring pathologies
+print("\nTop co-occurrences per pathology (excluding self):")
+for path in short_names:
+    row = cond_prob.loc[path].drop(path).sort_values(ascending=False)
+    top3 = ", ".join(f"{p}={v:.3f}" for p, v in row.head(3).items())
+    n_pos = int(col_totals[path])
+    print(f"  {path:<30s} (n={n_pos:6,})  top-3: {top3}")

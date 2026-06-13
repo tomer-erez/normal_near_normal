@@ -154,26 +154,26 @@ MODELS = [
     #     "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_swint_labeldot/final_merged.pt",
     # },
     
-        {
-        "name": "labeldot_nanmode_negative_from_swint",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/labeldot_nanmode_negative_from_swint/final_merged.pt",
-    },   
+    #     {
+    #     "name": "labeldot_nanmode_negative_from_swint",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/labeldot_nanmode_negative_from_swint/final_merged.pt",
+    # },   
         
-            {
-        "name": "labeldot_nanmode_negative_from_scratch",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/labeldot_nanmode_negative_from_scratch/final_merged.pt",
-    },   
+    #         {
+    #     "name": "labeldot_nanmode_negative_from_scratch",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/labeldot_nanmode_negative_from_scratch/final_merged.pt",
+    # },   
             
                 {
-        "name": "claude_Fixes_to_improve_pair",
+        "name": "claude_Fixes_to_improve_pair_from_vanilla",
         "model_type": "finetuned",
         "checkpoint": None,
         "finetuned_base_model": "ViT-B-32",
@@ -181,14 +181,14 @@ MODELS = [
         "finetuned_checkpoint": "experiments/claude_Fixes_to_improve_pair/final_merged.pt",
     },   
                 
-                    {
-        "name": "c_fixes_for_better_pair_ft_from_swint",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/c_fixes_for_better_pair_ft_from_swint/final_merged.pt",
-    },   
+    #                 {
+    #     "name": "c_fixes_for_better_pair_ft_from_swint",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/c_fixes_for_better_pair_ft_from_swint/final_merged.pt",
+    # },   
  ]
 
 KS = [1, 3, 5]
