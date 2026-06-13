@@ -1,6 +1,6 @@
 #!/bin/bash
 
-name="ref_vs_usFromVanilla_vs_usFineTuneSwint"
+name="clip_cxrclip_us"
 set -e
 cd "$(dirname "$0")"
 source ~/miniconda3/etc/profile.d/conda.sh
@@ -12,7 +12,7 @@ tmux new-session -d -s $name "
         --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
         --csv cxr_data/mimic_cxr_official_test.csv \
         --output_dir ./eval_outputs/$name \
-        --batch_size 128 \
+        --batch_size 512 \
         --skip_existing \
         --wandb-project mimic-cxr-clip \
         --wandb-run-name $name \

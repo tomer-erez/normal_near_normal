@@ -134,8 +134,7 @@ for label, s in counts.items():
         "value": label,
         "=0":    f"{(s==0).mean():.1%}",
         "=1":    f"{(s==1).mean():.1%}",
-        ">1":    f"{(s >1).mean():.1%}",
-        ">4":    f"{(s >4).mean():.1%}",
+        "=2":    f"{(s==2).mean():.1%}",
 
     })
 print(pd.DataFrame(rows).to_string(index=False))
@@ -156,3 +155,34 @@ print(f"Samples with at least 1 positive and at least 1 uncertain label: {both_p
 at_least_1_nan = df[chexpert_cols].isna().any(axis=1)
 both_pos_nan = (at_least_1_pos & at_least_1_nan).sum()
 print(f"Samples with at least 1 positive and at least 1 NaN label: {both_pos_nan:,} ({both_pos_nan/len(df):.3%})")  
+
+# how many have at least two positive labels?
+at_least_2_pos = (df[chexpert_cols] == 1).sum(axis=1) >= 2
+print(f"Samples with at least 2 positive labels: {at_least_2_pos.sum():,} ({at_least_2_pos.mean():.3%})")
+
+# at least 1 positive label?
+at_least_1_pos = (df[chexpert_cols] == 1).any(axis=1)
+print(f"Samples with at least 1 positive label: {at_least_1_pos.sum():,} ({at_least_1_pos.mean():.3%})")    
+
+#avg number of ones for a label in the dataset
+avg_num_ones_per_label = (df[chexpert_cols] == 1).mean().mean()
+print(f"Average number of positive labels per sample: {avg_num_ones_per_label:.3f} ({avg_num_ones_per_label*100:.1f}%)")
+
+# Summary table: rows with 0 / 1 / >1 occurrences of each label value
+print("\nPer-row count breakdown (counts and % of rows):")
+value_defs = [
+    ("1  (pos)", (df[chexpert_cols] == 1).sum(axis=1)),
+    ("0  (neg)", (df[chexpert_cols] == 0).sum(axis=1)),
+    ("-1 (unc)", (df[chexpert_cols] == -1).sum(axis=1)),
+    ("NaN     ", df[chexpert_cols].isna().sum(axis=1)),
+]
+n = len(df)
+rows = []
+for label, s in value_defs:
+    rows.append({
+        "value":   label,
+        "0 rows":  f"{(s == 0).sum():,} ({(s == 0).mean():.1%})",
+        "1 rows":  f"{(s == 1).sum():,} ({(s == 1).mean():.1%})",
+        ">1 rows": f"{(s > 1).sum():,} ({(s > 1).mean():.1%})",
+    })
+print(pd.DataFrame(rows).to_string(index=False))

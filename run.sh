@@ -1,19 +1,19 @@
 #!/bin/bash
 
-name="labeldot"
+name="claude_Fixes_to_improve_pair"
 set -e
 cd "$(dirname "$0")"
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate thesis_clip
 mkdir -p logs experiments/$name
 tmux new-session -d -s $name "
-    CUDA_VISIBLE_DEVICES=1,2 torchrun --nproc_per_node=2 --master_port=29510 train_lora.py \
+    CUDA_VISIBLE_DEVICES=1,2 torchrun --nproc_per_node=2 --master_port=29509 train_lora.py \
         --base-model ViT-B-32 \
         --pretrained openai \
         --precision bf16 \
         --lr 1e-4 \
         --min-lr 1e-8 \
-        --batch-size 90 \
+        --batch-size 80 \
         --epochs 100 \
         --warmup-epochs 5 \
         --patience 10 \

@@ -14,6 +14,16 @@ from all my metrics decide what we keep
 
 two big ones:
 1.now that we are not repelling, why not do a and not b where b can be nan as well? sounds smarter, richer signal , more images right?
+running it now one for scarch vs one for finetune: nan mode in both is negative
 i think adding that to ablations could be cool
 
 2. ways to improve the pair ask claude? algorithmically i mean
+
+better explanation of why we handle nan the way we do in train and eval, or compare addressing it as ignore vs negative
+
+train with a higher lora rank or larger model so we guarantee a sota model
+
+claude's idea for better pair results and better results overall creqte a branch and work from it
+
+
+validate best results from the paper vs ours

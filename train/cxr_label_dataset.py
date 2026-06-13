@@ -108,6 +108,8 @@ class CXRLabelDataset(Dataset):
             # Only CSV 0 is negative (-1.0); NaN is ignored (0.0)
             label_encoded = np.where(raw == 1, 1.0, np.where(raw == 0, -1.0, 0.0)).astype(np.float32)
 
+        self._label_to_idx = {lbl: i for i, lbl in enumerate(CHEXPERT_LABELS)}
+
         dicom_ids = df["metadata_dicom_id"].values
         records = []
         for i in range(len(df)):
@@ -123,16 +125,64 @@ class CXRLabelDataset(Dataset):
                 # only explicitly ruled out (CSV 0) counts
                 neg_indices = np.where(raw[i] == 0)[0]
             neg_labels = [CHEXPERT_LABELS[j] for j in neg_indices]
-            records.append((img_path, pos_labels, neg_labels, label_encoded[i].copy()))
+            records.append((img_path, pos_labels, neg_labels))
 
         self.records = records
 
     def __len__(self) -> int:
         return len(self.records)
 
+    def _sample_caption(self, pos_labels: list[str], neg_labels: list[str]):
+        """
+        Returns (caption_str, caption_pos: list[str], caption_neg: str|None).
+        caption_pos / caption_neg are the label names actually used — used to
+        build a caption-masked label vector so K(i,j) reflects caption semantics.
+        Pair labels are sorted into canonical CHEXPERT_LABELS order so training
+        and eval query strings match ("atelectasis and edema", never reversed).
+        """
+        if self.caption_mode == "single":
+            pos = random.choice(pos_labels)
+            return pos.lower(), [pos], None
+
+        if self.caption_mode == "pair":
+            chosen = sorted(random.sample(pos_labels, 2), key=lambda l: self._label_to_idx[l])
+            return _build_caption(chosen), chosen, None
+
+        if self.caption_mode == "negative":
+            pos = random.choice(pos_labels)
+            if neg_labels:
+                neg = random.choice(neg_labels)
+                return f"{pos.lower()} and no {neg.lower()}", [pos], neg
+            return pos.lower(), [pos], None
+
+        if self.caption_mode == "both":
+            if len(pos_labels) >= 2 and random.random() < 0.25:
+                chosen = sorted(random.sample(pos_labels, 2), key=lambda l: self._label_to_idx[l])
+                return _build_caption(chosen), chosen, None
+            pos = random.choice(pos_labels)
+            return pos.lower(), [pos], None
+
+        # "all": 50% single / 25% pair / 25% negative; unavailable types fall back to single
+        r = random.random()
+        if r < 0.50:
+            pos = random.choice(pos_labels)
+            return pos.lower(), [pos], None
+        if r < 0.75:
+            if len(pos_labels) >= 2:
+                chosen = sorted(random.sample(pos_labels, 2), key=lambda l: self._label_to_idx[l])
+                return _build_caption(chosen), chosen, None
+            pos = random.choice(pos_labels)
+            return pos.lower(), [pos], None
+        # negative
+        pos = random.choice(pos_labels)
+        if neg_labels:
+            neg = random.choice(neg_labels)
+            return f"{pos.lower()} and no {neg.lower()}", [pos], neg
+        return pos.lower(), [pos], None
+
     def __getitem__(self, idx):
         for _ in range(20):
-            img_path, pos_labels, neg_labels, label_vec = self.records[idx]
+            img_path, pos_labels, neg_labels = self.records[idx]
             try:
                 img = Image.open(img_path).convert("RGB")
                 break
@@ -143,41 +193,18 @@ class CXRLabelDataset(Dataset):
 
         img = self.transform(img)
 
-        # Build caption
-        if self.caption_mode == "single":
-            caption = random.choice(pos_labels).lower()
-        elif self.caption_mode == "pair":
-            caption = _build_caption(random.sample(pos_labels, 2))
-        elif self.caption_mode == "negative":
-            pos = random.choice(pos_labels)
-            if neg_labels:
-                neg = random.choice(neg_labels)
-                caption = f"{pos.lower()} and no {neg.lower()}"
-            else:
-                caption = pos.lower()  # fallback: all labels positive, no negatives available
-        elif self.caption_mode == "both":
-            if len(pos_labels) >= 2 and random.random() < 0.25:
-                caption = _build_caption(random.sample(pos_labels, 2))
-            else:
-                caption = random.choice(pos_labels).lower()
-        else:  # all: 50% single / 25% pair / 25% negative; unavailable types fall back to single
-            r = random.random()
-            can_pair = len(pos_labels) >= 2
-            if r < 0.50:
-                caption = random.choice(pos_labels).lower()
-            elif r < 0.75:
-                if can_pair:
-                    caption = _build_caption(random.sample(pos_labels, 2))
-                else:
-                    caption = random.choice(pos_labels).lower()  # pair impossible → single
-            else:
-                if neg_labels:
-                    neg = random.choice(neg_labels)
-                    caption = f"{random.choice(pos_labels).lower()} and no {neg.lower()}"
-                else:
-                    caption = random.choice(pos_labels).lower()  # no negatives → single
+        caption, caption_pos, caption_neg = self._sample_caption(pos_labels, neg_labels)
+
+        # Caption-masked label vector: only labels mentioned in the caption.
+        # This aligns the training loss signal with eval semantics — K(i,j)
+        # reflects actual caption content rather than the full image label row.
+        caption_label_vec = np.zeros(len(LABEL_COLS), dtype=np.float32)
+        for lbl in caption_pos:
+            caption_label_vec[self._label_to_idx[lbl]] = 1.0
+        if caption_neg is not None:
+            caption_label_vec[self._label_to_idx[caption_neg]] = -1.0
 
         tokens = self.tokenizer([caption])[0]  # (context_len,)
-        label_tensor = torch.from_numpy(label_vec)  # (13,) float32
+        label_tensor = torch.from_numpy(caption_label_vec)
 
         return img, tokens, label_tensor
