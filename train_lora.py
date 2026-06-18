@@ -196,6 +196,15 @@ def parse_args():
     p.add_argument("--negative-margin", type=float, default=0.0,
                    help="Cosine-sim margin for repulsion: pairs with sim < margin are not penalised "
                         "(negative_aware mode only).")
+    p.add_argument("--hnm-weight", type=float, default=0.0,
+                   help="Weight λ_HNM for the hard negative mining repulsion term. "
+                        "Adds a hinge penalty for pairs where one sample has label=+1 and the "
+                        "other has label=-1 for the same pathology (conflict pairs). "
+                        "Applied on top of any --match-mode; set to 0 to disable (default). "
+                        "Recommended: 0.05–0.1 so it stays weaker than the attraction loss.")
+    p.add_argument("--hnm-margin", type=float, default=0.0,
+                   help="Logit-space margin for the HNM hinge: conflicting pairs whose scaled "
+                        "cosine similarity is already below this value are not penalised.")
     p.add_argument("--attract-weight", type=float, default=0.1,
                    help="Weight for the image-image attraction term (image_pair mode only).")
     p.add_argument("--repel-weight", type=float, default=0.1,
@@ -316,7 +325,10 @@ def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch,
     total_loss = 0.0
     optimizer.zero_grad()
     use_labels = isinstance(loss_fn, (LabelAwareClipLoss, LabelAwareSigLipLoss, ImagePairAwareLoss))
-    is_neg_aware = use_labels and getattr(loss_fn, 'match_mode', None) == 'negative_aware'
+    is_neg_aware = use_labels and (
+        getattr(loss_fn, 'match_mode', None) == 'negative_aware'
+        or getattr(loss_fn, 'hnm_weight', 0) > 0
+    )
     is_image_pair = isinstance(loss_fn, ImagePairAwareLoss)
     total_clip_loss = 0.0
     total_neg_loss = 0.0
@@ -407,9 +419,9 @@ def train_one_epoch(model, loader, loss_fn, optimizer, scaler, device, epoch,
                 if _sc is not None:
                     _sc_val = _sc.item()
                     _sn_val = _sn.item() if _sn is not None else 0.0
-                    msg += f"  clip={_sc_val:.4f}  repulsion={_sn_val:.4f}"
+                    msg += f"  clip={_sc_val:.4f}  hnm={_sn_val:.4f}"
                     step_log["train/clip_loss_step"] = _sc_val
-                    step_log["train/neg_loss_step"] = _sn_val
+                    step_log["train/hnm_loss_step"] = _sn_val
             elif is_image_pair:
                 _sc = getattr(loss_fn, '_last_clip_loss', None)
                 _sa = getattr(loss_fn, '_last_attract_loss', None)
@@ -441,7 +453,10 @@ def eval_one_epoch(model, loader, loss_fn, device, amp_dtype, is_siglip=False):
     raw = _raw_model(model)
     total_loss = 0.0
     use_labels = isinstance(loss_fn, (LabelAwareClipLoss, LabelAwareSigLipLoss, ImagePairAwareLoss))
-    is_neg_aware = use_labels and getattr(loss_fn, 'match_mode', None) == 'negative_aware'
+    is_neg_aware = use_labels and (
+        getattr(loss_fn, 'match_mode', None) == 'negative_aware'
+        or getattr(loss_fn, 'hnm_weight', 0) > 0
+    )
     is_image_pair = isinstance(loss_fn, ImagePairAwareLoss)
     total_clip_loss = 0.0
     total_neg_loss = 0.0
@@ -753,6 +768,8 @@ def main():
                 neg_weight=args.negative_weight,
                 neg_margin=args.negative_margin,
                 kernel_alpha=args.kernel_alpha,
+                hnm_weight=args.hnm_weight,
+                hnm_margin=args.hnm_margin,
             )
         else:
             loss_fn = LabelAwareSigLipLoss(
@@ -760,15 +777,20 @@ def main():
                 neg_weight=args.negative_weight,
                 neg_margin=args.negative_margin,
                 kernel_alpha=args.kernel_alpha,
+                hnm_weight=args.hnm_weight,
+                hnm_margin=args.hnm_margin,
             )
     if is_main:
         if args.match_mode == "image_pair":
             log.info(f"Loss: image_pair  attract_weight={args.attract_weight}"
                      f"  repel_weight={args.repel_weight}  repel_margin={args.repel_margin}")
         else:
+            _hnm_str = (f"  hnm_weight={args.hnm_weight}  hnm_margin={args.hnm_margin}"
+                        if args.hnm_weight > 0 else "")
             log.info(f"Loss: {args.loss}/{args.match_mode}"
                      + (f"  neg_weight={args.negative_weight}  neg_margin={args.negative_margin}"
-                        if args.match_mode == "negative_aware" else ""))
+                        if args.match_mode == "negative_aware" else "")
+                     + _hnm_str)
 
     # ── Early stopping ────────────────────────────────────────────────────────
     early_stopper = None
@@ -808,7 +830,7 @@ def main():
 
         fig, ax = plt.subplots()
         ax.plot(epochs_so_far, train_clip_loss_history, label="clip loss")
-        ax.plot(epochs_so_far, [x * w for x in train_neg_loss_history], label=f"repulsion (×{w})")
+        ax.plot(epochs_so_far, [x * w for x in train_neg_loss_history], label=f"hnm (×{w})")
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Loss")
         ax.set_title("Train loss breakdown")
@@ -819,7 +841,7 @@ def main():
         if val_clip_loss_history:
             fig, ax = plt.subplots()
             ax.plot(epochs_so_far[:len(val_clip_loss_history)], val_clip_loss_history, label="clip loss")
-            ax.plot(epochs_so_far[:len(val_neg_loss_history)], [x * w for x in val_neg_loss_history], label=f"repulsion (×{w})")
+            ax.plot(epochs_so_far[:len(val_neg_loss_history)], [x * w for x in val_neg_loss_history], label=f"hnm (×{w})")
             ax.set_xlabel("Epoch")
             ax.set_ylabel("Loss")
             ax.set_title("Val loss breakdown")
@@ -885,7 +907,7 @@ def main():
 
             neg_suffix = ""
             if is_neg_aware and train_clip_loss is not None:
-                neg_suffix = f"  [clip={train_clip_loss:.4f}  rep={train_neg_loss:.4f}]"
+                neg_suffix = f"  [clip={train_clip_loss:.4f}  hnm={train_neg_loss:.4f}]"
             elif is_image_pair and train_clip_loss is not None:
                 neg_suffix = (
                     f"  [clip={train_clip_loss:.4f}"
@@ -895,7 +917,7 @@ def main():
             if val_loss is not None:
                 val_neg_suffix = ""
                 if is_neg_aware and val_clip_loss is not None:
-                    val_neg_suffix = f"  [clip={val_clip_loss:.4f}  rep={val_neg_loss:.4f}]"
+                    val_neg_suffix = f"  [clip={val_clip_loss:.4f}  hnm={val_neg_loss:.4f}]"
                 elif is_image_pair and val_clip_loss is not None:
                     val_neg_suffix = (
                         f"  [clip={val_clip_loss:.4f}"
@@ -924,7 +946,7 @@ def main():
                 if train_clip_loss is not None:
                     epoch_metrics["train/clip_loss"] = train_clip_loss
                 if train_neg_loss is not None:
-                    epoch_metrics["train/neg_loss"] = train_neg_loss
+                    epoch_metrics["train/hnm_loss"] = train_neg_loss
                 if train_attract_loss is not None:
                     epoch_metrics["train/attract_loss"] = train_attract_loss
                 if train_repel_loss is not None:
@@ -932,7 +954,7 @@ def main():
                 if val_clip_loss is not None:
                     epoch_metrics["val/clip_loss"] = val_clip_loss
                 if val_neg_loss is not None:
-                    epoch_metrics["val/neg_loss"] = val_neg_loss
+                    epoch_metrics["val/hnm_loss"] = val_neg_loss
                 if val_attract_loss is not None:
                     epoch_metrics["val/attract_loss"] = val_attract_loss
                 if val_repel_loss is not None:

@@ -433,13 +433,8 @@ def main():
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--max_samples", type=int, default=None,
                         help="Cap the gallery to the first N images (useful for quick smoke tests)")
-    parser.add_argument("--nan-mode", default="negative", choices=["negative", "ignore"],
-                        help="How to treat NaN (not-mentioned) labels when deciding relevance for "
-                             "negative queries. "
-                             "'negative' (default): NaN and CSV 0 are both considered absent — "
-                             "an image is relevant to 'X and no Y' if Y==0 OR Y is NaN. "
-                             "'ignore': only CSV 0 counts as absent — NaN images are excluded "
-                             "from both relevant and irrelevant sets for that label.")
+    # NaN (not-mentioned) labels are always treated as absent in evaluation:
+    # an image satisfies "no B" if B==0 (explicit negative) or B is not mentioned.
     parser.add_argument("--neg-template", default=NEG_TEMPLATE_DEFAULT,
                         help="Format string for negative query text. "
                              "Placeholders: {pos} = positive label, {neg} = negated label. "
@@ -563,14 +558,9 @@ def main():
 
         if neg_indices:
             neg_cols = label_matrix[:, neg_indices]
-            if args.nan_mode == "negative":
-                # NaN (not mentioned) and CSV 0 (explicitly ruled out) both count as absent.
-                # CSV -1 (uncertain) does NOT count as absent.
-                neg_ok = ((neg_cols == 0.0) | np.isnan(neg_cols)).all(axis=1)
-            else:
-                # Only CSV 0 (explicitly ruled out) counts as absent.
-                # NaN images are not considered relevant for this negative label.
-                neg_ok = (neg_cols == 0.0).all(axis=1)
+            # NaN (not mentioned) and CSV 0 (explicitly ruled out) both count as absent.
+            # CSV -1 (uncertain) does NOT count as absent.
+            neg_ok = ((neg_cols == 0.0) | np.isnan(neg_cols)).all(axis=1)
             relevant_mask = pos_ok & neg_ok
         else:
             relevant_mask = pos_ok

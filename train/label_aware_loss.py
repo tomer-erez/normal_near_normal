@@ -137,6 +137,8 @@ class LabelAwareClipLoss(nn.Module):
         neg_weight: float = 0.5,
         neg_margin: float = 0.0,
         kernel_alpha: float = 1.0,
+        hnm_weight: float = 0.0,
+        hnm_margin: float = 0.0,
     ):
         super().__init__()
         assert match_mode in ("single_label", "two_label", "negative_aware", "graded", "signed_kernel", "label_dot"), match_mode
@@ -144,6 +146,8 @@ class LabelAwareClipLoss(nn.Module):
         self.neg_weight = neg_weight
         self.neg_margin = neg_margin
         self.kernel_alpha = kernel_alpha
+        self.hnm_weight = hnm_weight
+        self.hnm_margin = hnm_margin
         # How many shared POSITIVE labels are required for a pair to count as positive.
         # two_label requires ≥2; everything else (single_label, negative_aware) requires ≥1.
         # graded/signed_kernel/label_dot do not use a threshold — they use soft weights.
@@ -425,6 +429,9 @@ class LabelAwareClipLoss(nn.Module):
 
         self._last_clip_loss = clip_loss.detach()
         self._last_neg_loss = None
+        self._last_hnm_loss = None
+
+        total_loss = clip_loss
 
         # Part 3: repulsion hinge for conflicting pairs (negative_aware only)
         # Uses scaled logits (not raw cosine sim) so the hinge gradient is
@@ -434,9 +441,21 @@ class LabelAwareClipLoss(nn.Module):
         if self.match_mode == "negative_aware" and conflict.any():
             neg_loss = F.relu(logits[conflict] - self.neg_margin).mean()
             self._last_neg_loss = neg_loss.detach()
-            return clip_loss + self.neg_weight * neg_loss
+            total_loss = total_loss + self.neg_weight * neg_loss
 
-        return clip_loss
+        # Hard negative mining: explicit repulsion for pairs where one sample
+        # has label=+1 and the other has label=-1 for the same pathology.
+        # Applied on top of any match_mode; weight should be small (≪1) so
+        # the contrastive attraction term remains dominant.
+        if self.hnm_weight > 0 and conflict.any():
+            hnm_loss = F.relu(logits[conflict] - self.hnm_margin).mean()
+            self._last_hnm_loss = hnm_loss.detach()
+            # Also exposed via _last_neg_loss so existing train-loop tracking picks it up.
+            if self._last_neg_loss is None:
+                self._last_neg_loss = self._last_hnm_loss
+            total_loss = total_loss + self.hnm_weight * hnm_loss
+
+        return total_loss
 
 
 # ── Sigmoid variant (SigLIP loss) ─────────────────────────────────────────────
@@ -595,6 +614,8 @@ class LabelAwareSigLipLoss(nn.Module):
         neg_weight: float = 0.5,
         neg_margin: float = 0.0,
         kernel_alpha: float = 1.0,
+        hnm_weight: float = 0.0,
+        hnm_margin: float = 0.0,
     ):
         super().__init__()
         assert match_mode in ("single_label", "two_label", "negative_aware", "graded", "signed_kernel", "label_dot"), match_mode
@@ -602,6 +623,8 @@ class LabelAwareSigLipLoss(nn.Module):
         self.neg_weight = neg_weight
         self.neg_margin = neg_margin
         self.kernel_alpha = kernel_alpha
+        self.hnm_weight = hnm_weight
+        self.hnm_margin = hnm_margin
         self._pos_threshold = 2 if match_mode == "two_label" else 1
 
     def _build_siglip_target(self, labels: torch.Tensor):
@@ -787,12 +810,23 @@ class LabelAwareSigLipLoss(nn.Module):
 
         self._last_clip_loss = siglip_loss.detach()
         self._last_neg_loss = None
+        self._last_hnm_loss = None
+
+        total_loss = siglip_loss
 
         # Part 3: optional extra repulsion hinge (negative_aware only)
         # Uses scaled logits so gradient magnitude matches the siglip loss term.
         if self.match_mode == "negative_aware" and conflict.any():
             neg_loss = F.relu(logits[conflict] - self.neg_margin).mean()
             self._last_neg_loss = neg_loss.detach()
-            return siglip_loss + self.neg_weight * neg_loss
+            total_loss = total_loss + self.neg_weight * neg_loss
 
-        return siglip_loss
+        # Hard negative mining: explicit repulsion for conflicting pairs.
+        if self.hnm_weight > 0 and conflict.any():
+            hnm_loss = F.relu(logits[conflict] - self.hnm_margin).mean()
+            self._last_hnm_loss = hnm_loss.detach()
+            if self._last_neg_loss is None:
+                self._last_neg_loss = self._last_hnm_loss
+            total_loss = total_loss + self.hnm_weight * hnm_loss
+
+        return total_loss

@@ -3,20 +3,22 @@ Run retrieval evaluation for all models sequentially, then summarize results
 into comparison tables and plots.
 
 Query types evaluated
-  single           13 queries — "atelectasis"           relevant: label==1
-  pair             78 queries — "atelectasis and edema"  relevant: both labels==1
-  negative_nan    156 queries — "atelectasis and no X"  relevant: pos==1 AND neg∈{0,NaN}
-  negative_strict 156 queries — same queries, stricter:  relevant: pos==1 AND neg==0 only
+  single          13 queries — "atelectasis"           relevant: label==1
+  pair            78 queries — "atelectasis and edema"  relevant: both labels==1
+  negative       156 queries — "atelectasis and no X"  relevant: pos==1 AND neg∈{0,NaN}
+  negative_robust 156 queries — same queries, rephrased template
+
+NaN (not-mentioned) labels are always treated as absent in evaluation.
 
 For each model two eval passes are run automatically:
-  pass 1 (nan_mode=negative): covers single, pair, negative_nan
-  pass 2 (nan_mode=ignore):   covers negative_strict
+  pass 1: single + pair + negative  (standard template)
+  pass 2: negative only             (robust/rephrased template)
 
 Output files (in --output_dir):
   summary_single.csv          P@k / R@k per model, single-label queries
   summary_pair.csv            P@k / R@k per model, pair queries
-  summary_negative_nan.csv    P@k / R@k per model, negative queries (NaN=absent)
-  summary_negative_strict.csv P@k / R@k per model, negative queries (NaN=ignored)
+  summary_negative.csv        P@k / R@k per model, negative queries
+  summary_negative_robust.csv P@k / R@k per model, negative queries (rephrased)
   summary_macro.csv           macro-averaged metrics per model (one row per model)
   plots/                      comparison charts + per-model 13×13 heatmaps
 
@@ -146,21 +148,20 @@ MODELS = [
     #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/r50_mc.pt",
     #     "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_r50_labeldot_unfrozen/final_merged.pt",
     # },
-    # {
-    #     "name": "labeldot_finetune_swintmc",
-    #     "model_type": "cxrclip_finetune",
-    #     "checkpoint": None,
-    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-    #     "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_swint_labeldot/final_merged.pt",
-    # },
+    {
+        "name": "labeldot_finetune_swintmc",
+        "model_type": "cxrclip_finetune",
+        "checkpoint": None,
+        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
+        "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_swint_labeldot/final_merged.pt",
+    },
     
     #     {
     #     "name": "labeldot_nanmode_negative_from_swint",
-    #     "model_type": "finetuned",
+    #     "model_type": "cxrclip_finetune",
     #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/labeldot_nanmode_negative_from_swint/final_merged.pt",
+    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
+    #     "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_nanmode_negative_from_swint/final_merged.pt",
     # },   
         
     #         {
@@ -172,23 +173,57 @@ MODELS = [
     #     "finetuned_checkpoint": "experiments/labeldot_nanmode_negative_from_scratch/final_merged.pt",
     # },   
             
-                {
-        "name": "claude_Fixes_to_improve_pair_from_vanilla",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/claude_Fixes_to_improve_pair/final_merged.pt",
-    },   
-                
-    #                 {
-    #     "name": "c_fixes_for_better_pair_ft_from_swint",
+    #             {
+    #     "name": "claude_Fixes_to_improve_pair_from_vanilla",
     #     "model_type": "finetuned",
     #     "checkpoint": None,
     #     "finetuned_base_model": "ViT-B-32",
     #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/c_fixes_for_better_pair_ft_from_swint/final_merged.pt",
+    #     "finetuned_checkpoint": "experiments/claude_Fixes_to_improve_pair/final_merged.pt",
     # },   
+                
+    # {
+    #     "name": "c_fixes_for_better_pair_ft_from_swint_in_other_branch",
+    #     "model_type": "cxrclip_finetune",
+    #     "checkpoint": None,
+    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
+    #     "cxrclip_finetune_merged_checkpoint": "experiments/c_fixes_for_better_pair_ft_from_swint/final_merged.pt",
+    # },   
+    
+    
+    {
+        "name": "labeldot_hnm005_vanilla",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/labeldot_hnm_vanilla/final_merged.pt",
+    },   
+                
+    {
+        "name": "labeldot_hnm005_swint",
+        "model_type": "cxrclip_finetune",
+        "checkpoint": None,
+        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
+        "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint/final_merged.pt",
+    },   
+    
+                        {
+        "name": "labeldot_hnm_vanilla_hnm03",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/labeldot_hnm_vanilla_hnm03/final_merged.pt",
+    },   
+                
+    {
+        "name": "labeldot_hnm_swint_hnm03",
+        "model_type": "cxrclip_finetune",
+        "checkpoint": None,
+        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
+        "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_hnm03/final_merged.pt",
+    },   
  ]
 
 KS = [1, 3, 5]
@@ -203,22 +238,15 @@ def results_path(model: dict) -> Path:
     return REPO_ROOT / f"results_{model['name']}.csv"
 
 
-def results_strict_path(model: dict) -> Path:
-    """Repo-root path for the nan_mode=ignore (negative_strict) results."""
+def results_robust_path(model: dict) -> Path:
+    """Repo-root path for linguistic robustness (rephrased template) results."""
     base = results_path(model)
-    return base.with_name(base.stem + "_neg_strict.csv")
-
-
-def results_robust_path(model: dict, nan_mode: str) -> Path:
-    """Repo-root path for linguistic robustness results."""
-    base = results_path(model)
-    suffix = "_robust_nan" if nan_mode == "negative" else "_robust_strict"
-    return base.with_name(base.stem + suffix + ".csv")
+    return base.with_name(base.stem + "_robust.csv")
 
 
 def run_eval(model: dict, paired_dir: str, csv: str,
              query_mode: str = "all", batch_size: int = 64,
-             max_samples: int | None = None, nan_mode: str = "negative",
+             max_samples: int | None = None,
              neg_template: str | None = None) -> Path:
     """Run eval_model.py for one model. Returns path to results CSV."""
     cmd = [
@@ -229,7 +257,6 @@ def run_eval(model: dict, paired_dir: str, csv: str,
         "--csv", csv,
         "--query_mode", query_mode,
         "--batch_size", str(batch_size),
-        "--nan-mode", nan_mode,
         "--ks", *[str(k) for k in KS],
     ]
     if neg_template is not None:
@@ -289,8 +316,7 @@ def build_macro_summary(all_results: dict[str, pd.DataFrame]) -> pd.DataFrame:
     rows = []
     for model_name, df in all_results.items():
         row = {"model": model_name}
-        for qtype in ["single", "pair", "negative_nan", "negative_strict",
-                      "negative_robust_nan", "negative_robust_strict"]:
+        for qtype in ["single", "pair", "negative", "negative_robust"]:
             if qtype not in df["type"].values:
                 continue
             subset = df[(df["type"] == qtype) & (df["n_relevant"] > 0)]
@@ -448,16 +474,14 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
 
     # ── 5. Negative mode: macro bar charts (one per negative variant) ──────────
     neg_variants = [
-        ("negative_nan",          "NaN counts as absent  (lenient)"),
-        ("negative_strict",       "NaN ignored — only explicit 0  (strict)"),
-        ("negative_robust_nan",   "Rephrased query — NaN absent  (robustness)"),
-        ("negative_robust_strict","Rephrased query — NaN ignored  (robustness strict)"),
+        ("negative",         "negation queries"),
+        ("negative_robust",  "negation queries — rephrased template"),
     ]
     for neg_qtype, neg_subtitle in neg_variants:
         if neg_qtype not in qtypes_present:
             continue
         fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-        fig.suptitle(f"Macro-averaged metrics — 'yes A and no B' queries\n{neg_subtitle}", fontsize=13)
+        fig.suptitle(f"Macro-averaged metrics — {neg_subtitle}", fontsize=13)
         x = np.arange(len(model_names))
         width = 0.25
         for ax, prefix, metrics in [
@@ -507,7 +531,7 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
         if not available:
             continue
         fig, ax = plt.subplots(figsize=(12, 5))
-        fig.suptitle(f"HNRR — hard negatives in top-k ('yes A and no B' queries)\n{neg_subtitle}", fontsize=13)
+        fig.suptitle(f"HNRR — hard negatives in top-k — {neg_subtitle}", fontsize=13)
         x = np.arange(len(model_names))
         width = 0.25
         all_vals = []
@@ -617,8 +641,7 @@ def make_table_plots(macro_summary: pd.DataFrame, plots_dir: Path):
     BEST_BG  = "#c8f0d0"   # soft green for best-in-column
     ROW_LBL  = "#dce3ea"   # muted blue-grey for row-label column
 
-    for qtype in ["single", "pair", "negative_nan", "negative_strict",
-                  "negative_robust_nan", "negative_robust_strict"]:
+    for qtype in ["single", "pair", "negative", "negative_robust"]:
         cols = [f"{qtype}_{m}" for m in METRIC_COLS]
         available = [c for c in cols if c in macro_summary.columns]
         if not available:
@@ -630,7 +653,9 @@ def make_table_plots(macro_summary: pd.DataFrame, plots_dir: Path):
         col_headers = [c.replace(f"{qtype}_", "") for c in available]
 
         data = macro_summary[available].values.astype(float)  # (n_rows, n_cols)
-        best_row = np.nanargmax(data, axis=0)                 # index of best per column
+        best_val = np.nanmax(data, axis=0)
+        best_mask = data == best_val[np.newaxis, :]
+        is_unique_best = best_mask.sum(axis=0) == 1          # suppress green on ties
 
         # ── build cell text & colours ─────────────────────────────────────────
         cell_text   = []
@@ -642,7 +667,7 @@ def make_table_plots(macro_summary: pd.DataFrame, plots_dir: Path):
             for j in range(n_cols):
                 val = data[i, j]
                 row_txt.append(f"{val:.4f}" if not np.isnan(val) else "—")
-                row_clr.append(BEST_BG if best_row[j] == i else base_bg)
+                row_clr.append(BEST_BG if (best_mask[i, j] and is_unique_best[j]) else base_bg)
             cell_text.append(row_txt)
             cell_colors.append(row_clr)
 
@@ -675,9 +700,11 @@ def make_table_plots(macro_summary: pd.DataFrame, plots_dir: Path):
             cell.set_text_props(color=HDR_FG, fontweight="bold")
             cell.set_edgecolor("#444444")
 
-        # bold best-in-column values
-        for j, best_i in enumerate(best_row):
-            tbl[best_i + 1, j].set_text_props(fontweight="bold")
+        # bold best-in-column values (only when unique — no bold on ties)
+        for j in range(n_cols):
+            if is_unique_best[j]:
+                best_i = int(np.where(best_mask[:, j])[0][0])
+                tbl[best_i + 1, j].set_text_props(fontweight="bold")
 
         # thicker top/bottom borders (booktabs feel)
         for j in range(n_cols):
@@ -695,6 +722,29 @@ def make_table_plots(macro_summary: pd.DataFrame, plots_dir: Path):
         fig.savefig(path, dpi=180, bbox_inches="tight")
         plt.close(fig)
         log.info(f"Saved → {path}")
+
+
+# ── Rankings ──────────────────────────────────────────────────────────────────
+
+def build_rankings(macro_summary: pd.DataFrame, output_dir: Path) -> pd.DataFrame:
+    """Rank models on every metric (1=best). Saves rankings.csv to output_dir."""
+    df = macro_summary.set_index("model")
+    metric_cols = list(df.columns)
+    hnrr_cols = [c for c in metric_cols if "HNRR" in c]
+
+    rank_df = pd.DataFrame(index=df.index)
+    for col in metric_cols:
+        ascending = col in hnrr_cols  # HNRR: lower is better
+        rank_df[col] = df[col].rank(method="min", ascending=ascending).astype(int)
+
+    pr_cols = [c for c in metric_cols if "HNRR" not in c]
+    rank_df["avg_rank_PR"] = rank_df[pr_cols].mean(axis=1)
+    rank_df["overall_rank"] = rank_df["avg_rank_PR"].rank(method="min").astype(int)
+
+    path = output_dir / "rankings.csv"
+    rank_df.to_csv(path)
+    log.info(f"Saved → {path}")
+    return rank_df
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -731,15 +781,16 @@ def main():
 
     # ── Run evaluations ───────────────────────────────────────────────────────
     # Two passes per model:
-    #   pass 1 (nan_mode=negative): single + pair + negative  → type renamed "negative_nan"
-    #   pass 2 (nan_mode=ignore):   negative only             → type renamed "negative_strict"
+    #   pass 1: single + pair + negative  (standard template)
+    #   pass 2: negative only             (robust/rephrased template)
+    # NaN labels are always treated as absent in evaluation.
     all_results = {}
     for i, model in enumerate(MODELS):
         print("\n" + "=" * 80)
         log.info(f"Evaluating model {i+1}/{len(MODELS)}: {model['name']}")
 
-        out_path        = output_dir / results_path(model).name
-        out_path_strict = output_dir / results_strict_path(model).name
+        out_path     = output_dir / results_path(model).name
+        out_path_rob = output_dir / results_robust_path(model).name
 
         # ── guard: skip missing checkpoints ───────────────────────────────────
         checkpoint_file = CHECKPOINTS_DIR / model["checkpoint"] if model["checkpoint"] else None
@@ -762,7 +813,7 @@ def main():
                 log.warning(f"Hybrid checkpoint not found, skipping {model['name']}: {merged_ckpt}")
                 continue
 
-        # ── pass 1: all queries, NaN = absent ─────────────────────────────────
+        # ── pass 1: all queries, standard template ────────────────────────────
         if args.skip_existing and out_path.exists():
             log.info(f"  [pass 1] Skipping — {out_path.name} already exists")
         else:
@@ -772,7 +823,6 @@ def main():
                     query_mode=args.query_mode,
                     batch_size=args.batch_size,
                     max_samples=args.max_samples,
-                    nan_mode="negative",
                 )
                 if raw_path.exists() and raw_path != out_path:
                     shutil.move(str(raw_path), out_path)
@@ -780,48 +830,25 @@ def main():
                 log.error(f"  [pass 1] Failed for {model['name']}: {e}")
                 continue
 
-        # ── pass 2: negative queries only, NaN = ignored ──────────────────────
-        neg_qmode = "negative" if args.query_mode in ("all", "negative") else None
-        if neg_qmode is None:
-            log.info(f"  [pass 2] Skipping negative_strict (query_mode={args.query_mode})")
-        elif args.skip_existing and out_path_strict.exists():
-            log.info(f"  [pass 2] Skipping — {out_path_strict.name} already exists")
+        # ── pass 2: negative queries, rephrased template ──────────────────────
+        if args.query_mode not in ("all", "negative"):
+            log.info(f"  [pass 2] Skipping robust (query_mode={args.query_mode})")
+        elif args.skip_existing and out_path_rob.exists():
+            log.info(f"  [pass 2] Skipping — {out_path_rob.name} already exists")
         else:
             try:
-                raw_path_strict = run_eval(
+                from baseline_eval.eval_model import NEG_TEMPLATE_ROBUST
+                raw_rob = run_eval(
                     model, args.paired_dir, args.csv,
                     query_mode="negative",
                     batch_size=args.batch_size,
                     max_samples=args.max_samples,
-                    nan_mode="ignore",
+                    neg_template=NEG_TEMPLATE_ROBUST,
                 )
-                if raw_path_strict.exists() and raw_path_strict != out_path_strict:
-                    shutil.move(str(raw_path_strict), out_path_strict)
+                if raw_rob.exists() and raw_rob != out_path_rob:
+                    shutil.move(str(raw_rob), out_path_rob)
             except Exception as e:
                 log.error(f"  [pass 2] Failed for {model['name']}: {e}")
-
-        # ── pass 3 & 4: linguistic robustness (rephrased negative queries) ───────
-        if args.query_mode in ("all", "negative"):
-            from baseline_eval.eval_model import NEG_TEMPLATE_ROBUST
-            for rob_nan_mode, rob_type in [("negative", "negative_robust_nan"),
-                                           ("ignore",   "negative_robust_strict")]:
-                rob_path = output_dir / results_robust_path(model, rob_nan_mode).name
-                if args.skip_existing and rob_path.exists():
-                    log.info(f"  [robust {rob_nan_mode}] Skipping — {rob_path.name} already exists")
-                else:
-                    try:
-                        raw_rob = run_eval(
-                            model, args.paired_dir, args.csv,
-                            query_mode="negative",
-                            batch_size=args.batch_size,
-                            max_samples=args.max_samples,
-                            nan_mode=rob_nan_mode,
-                            neg_template=NEG_TEMPLATE_ROBUST,
-                        )
-                        if raw_rob.exists() and raw_rob != rob_path:
-                            shutil.move(str(raw_rob), rob_path)
-                    except Exception as e:
-                        log.error(f"  [robust {rob_nan_mode}] Failed for {model['name']}: {e}")
 
         # ── merge results ──────────────────────────────────────────────────────
         if not out_path.exists():
@@ -829,21 +856,13 @@ def main():
             continue
 
         df_main = pd.read_csv(out_path)
-        df_main.loc[df_main["type"] == "negative", "type"] = "negative_nan"
+        # "negative" type from eval_model.py is already the right name
 
         frames = [df_main]
-        if out_path_strict.exists():
-            df_strict = pd.read_csv(out_path_strict)
-            df_strict.loc[df_strict["type"] == "negative", "type"] = "negative_strict"
-            frames.append(df_strict)
-
-        for rob_nan_mode, rob_type in [("negative", "negative_robust_nan"),
-                                       ("ignore",   "negative_robust_strict")]:
-            rob_path = output_dir / results_robust_path(model, rob_nan_mode).name
-            if rob_path.exists():
-                df_rob = pd.read_csv(rob_path)
-                df_rob.loc[df_rob["type"] == "negative", "type"] = rob_type
-                frames.append(df_rob)
+        if out_path_rob.exists():
+            df_rob = pd.read_csv(out_path_rob)
+            df_rob.loc[df_rob["type"] == "negative", "type"] = "negative_robust"
+            frames.append(df_rob)
 
         all_results[model["name"]] = pd.concat(frames, ignore_index=True)
 
@@ -856,8 +875,7 @@ def main():
     # ── Build and save per-type summaries ────────────────────────────────────
     qtypes_present = {qt for df in all_results.values() for qt in df["type"].unique()}
 
-    ALL_QTYPES = ["single", "pair", "negative_nan", "negative_strict",
-                  "negative_robust_nan", "negative_robust_strict"]
+    ALL_QTYPES = ["single", "pair", "negative", "negative_robust"]
 
     summary_paths = {}
     for qtype in ALL_QTYPES:
@@ -880,6 +898,9 @@ def main():
     plots_dir = output_dir / "plots"
     make_plots(all_results, macro_summary, plots_dir)
     make_table_plots(macro_summary, plots_dir)
+
+    # ── Rankings ──────────────────────────────────────────────────────────────
+    build_rankings(macro_summary, output_dir)
 
     # ── W&B logging ───────────────────────────────────────────────────────────
     if args.wandb_project:
