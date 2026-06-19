@@ -110,7 +110,7 @@ def parse_args():
                         "Required unless --cxrclip-finetune is set. "
                         "When --cxrclip-checkpoint is set, this specifies the OpenCLIP text "
                         "encoder used in the hybrid model (e.g. ViT-B-32 --pretrained openai).")
-    p.add_argument("--pretrained", default="",
+    p.add_argument("--pretrained", default="openai",
                    help="open_clip pretrained tag, e.g. 'openai'. Leave blank for hf-hub models.")
     p.add_argument("--cxrclip-checkpoint", default=None,
                    help="Path to a CXR-CLIP checkpoint (.pt). When provided, creates a hybrid "
@@ -135,10 +135,10 @@ def parse_args():
                    help="Fraction of training data held out for validation when --val-csv is not given. "
                         "Set to 0 to disable validation entirely.")
     p.add_argument("--caption-mode", default="all", choices=["single", "pair", "both", "negative", "all"])
-    p.add_argument("--nan-mode", default="negative", choices=["negative", "ignore"],
+    p.add_argument("--nan-mode", default="ignore", choices=["negative", "ignore"],
                    help="How to encode NaN (not-mentioned) labels. "
-                        "'negative' (default): NaN and CSV 0 are both treated as absent (-1.0). "
-                        "'ignore': only CSV 0 counts as absent (-1.0); NaN is ignored (0.0).")
+                        "'ignore' (default): only CSV 0 counts as absent (-1.0); NaN is ignored (0.0). "
+                        "'negative': NaN and CSV 0 are both treated as absent (-1.0).")
     p.add_argument("--max-samples", type=int, default=None,
                    help="Cap dataset size (useful for debugging)")
     # LoRA
@@ -152,10 +152,10 @@ def parse_args():
     # Training
     p.add_argument("--output-dir", required=True)
     p.add_argument("--epochs", type=int, default=100)
-    p.add_argument("--batch-size", type=int, default=64,
+    p.add_argument("--batch-size", type=int, default=70,
                    help="Per-GPU batch size. Effective batch = batch-size * grad-accum-steps * world-size")
     p.add_argument("--lr", type=float, default=1e-4)
-    p.add_argument("--min-lr", type=float, default=1e-7,
+    p.add_argument("--min-lr", type=float, default=1e-8,
                    help="Minimum LR floor for cosine schedule")
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--grad-accum-steps", type=int, default=1,
@@ -170,13 +170,13 @@ def parse_args():
     # Scheduler
     p.add_argument("--scheduler", default="cosine", choices=["cosine", "plateau"],
                    help="LR scheduler. 'plateau' reduces LR when val loss stagnates.")
-    p.add_argument("--warmup-epochs", type=int, default=None,
-                   help="Linear warmup epochs. Default: epochs // 10.")
+    p.add_argument("--warmup-epochs", type=int, default=5,
+                   help="Linear warmup epochs.")
     # Early stopping
     p.add_argument("--patience", type=int, default=10,
                    help="Early stopping patience in epochs (0 to disable)")
     # Label-aware loss
-    p.add_argument("--match-mode", default="standard",
+    p.add_argument("--match-mode", default="label_dot",
                    choices=["standard", "single_label", "two_label", "negative_aware", "graded", "image_pair", "signed_kernel", "label_dot"],
                    help="How to define positive pairs in the batch. "
                         "'standard': diagonal (vanilla CLIP). "
@@ -196,7 +196,7 @@ def parse_args():
     p.add_argument("--negative-margin", type=float, default=0.0,
                    help="Cosine-sim margin for repulsion: pairs with sim < margin are not penalised "
                         "(negative_aware mode only).")
-    p.add_argument("--hnm-weight", type=float, default=0.0,
+    p.add_argument("--hnm-weight", type=float, default=0.3,
                    help="Weight λ_HNM for the hard negative mining repulsion term. "
                         "Adds a hinge penalty for pairs where one sample has label=+1 and the "
                         "other has label=-1 for the same pathology (conflict pairs). "

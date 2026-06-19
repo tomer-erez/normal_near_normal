@@ -16,7 +16,7 @@ conda activate thesis_clip
 mkdir -p logs experiments/$name
 tmux new-session -d -s $name "
     CUDA_VISIBLE_DEVICES=0,5 torchrun --nproc_per_node=2 --master_port=29503 train_lora.py \
-        --cxrclip-finetune ./valid_pretrained_models_to_try/swint_mc.pt \
+        --cxrclip-finetune ./valid_pretrained_models_to_try/swint_m.pt \
         --precision bf16 \
         --lr 1e-4 \
         --min-lr 1e-8 \

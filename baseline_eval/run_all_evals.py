@@ -70,10 +70,10 @@ SHORT_LABELS = [l.replace("Enlarged Cardiomediastinum", "Enlarged CM") for l in 
 MODELS = [
     {"name": "vanilla_clip_not_trained",  "model_type": "vanilla_clip",  "checkpoint": None},
     # {"name": "biomedclip",    "model_type": "biomedclip",    "checkpoint": None},
-    # {"name": "cxrclip_r50_m",   "model_type": "cxrclip", "checkpoint": "r50_m.pt"},
-    {"name": "cxrclip_r50_mc",  "model_type": "cxrclip", "checkpoint": "r50_mc.pt"},
+    {"name": "cxrclip_r50_m",   "model_type": "cxrclip", "checkpoint": "r50_m.pt"},
+    # {"name": "cxrclip_r50_mc",  "model_type": "cxrclip", "checkpoint": "r50_mc.pt"},
     # {"name": "cxrclip_r50_mcc", "model_type": "cxrclip", "checkpoint": "r50_mcc.pt"},
-    # {"name": "cxrclip_swint_m",   "model_type": "cxrclip", "checkpoint": "swint_m.pt"},
+    {"name": "cxrclip_swint_m",   "model_type": "cxrclip", "checkpoint": "swint_m.pt"},
     # {"name": "cxrclip_swint_mc",  "model_type": "cxrclip", "checkpoint": "swint_mc.pt"},
     # {"name": "cxrclip_swint_mcc", "model_type": "cxrclip", "checkpoint": "swint_mcc.pt"},
     # Fine-tuned models — add entries here after training:
@@ -828,173 +828,144 @@ def make_parallel_coordinates_plot(macro_summary: pd.DataFrame, plots_dir: Path)
 
 def make_radar_plot(macro_summary: pd.DataFrame, plots_dir: Path):
     """
-    Spider/radar chart — one filled polygon per model, one spoke per metric.
-    Designed to fit in a single column of a two-column paper (figsize 4.5×4.5 in).
+    Radar chart (top) + compact value table (bottom).
+    Fits in a single column of a two-column paper.
     """
     import math
 
     plots_dir.mkdir(parents=True, exist_ok=True)
 
     SPOKES = [
-        ("single_P@5",          "Single\nP@5",        False),
-        ("pair_P@5",            "Pair\nP@5",          False),
-        ("negative_P@5",        "Negation\nP@5",      False),
-        ("negative_robust_P@5", "Neg-Robust\nP@5",    False),
-        ("negative_HNRR@5",     "HNRR@5\n(↑=lower)",  True),
+        ("single_P@5",          "Single\nP@5",     False),
+        ("pair_P@5",            "Pair\nP@5",       False),
+        ("negative_P@5",        "Neg.\nP@5",       False),
+        ("negative_robust_P@5", "Neg.-Rob.\nP@5",  False),
+        ("negative_HNRR@5",     "HNRR@5\n(↓)",     True),
     ]
-    avail = [(c, l, inv) for c, l, inv in SPOKES if c in macro_summary.columns]
+    DISP = {
+        "vanilla_clip_not_trained": "CLIP",
+        "cxrclip_r50_mc":           "CXR-CLIP",
+        "labeldot_hnm_swint_hnm03": "Ours",
+    }
+
+    avail = [(c, lbl, inv) for c, lbl, inv in SPOKES if c in macro_summary.columns]
     N = len(avail)
     if N < 3:
-        log.warning("Radar plot: fewer than 3 axes available, skipping.")
         return
 
     model_names = macro_summary["model"].tolist()
-    n_models = len(model_names)
+    n_models    = len(model_names)
 
-    # --- normalize each spoke to [0,1]; inverted spokes: flip so 1=best -------
-    raw   = {c: macro_summary[c].values.astype(float) for c, _, _ in avail}
-    lo    = {c: float(np.nanmin(v)) for c, v in raw.items()}
-    hi    = {c: float(np.nanmax(v)) for c, v in raw.items()}
+    raw = {c: macro_summary[c].values.astype(float) for c, _, _ in avail}
+    lo  = {c: float(np.nanmin(v)) for c, v in raw.items()}
+    hi  = {c: float(np.nanmax(v)) for c, v in raw.items()}
 
     def _norm(col, inv):
         span = hi[col] - lo[col]
-        if span == 0:
-            return np.full(len(macro_summary), 0.5)
-        n = (raw[col] - lo[col]) / span
+        n = np.zeros(n_models) if span == 0 else (raw[col] - lo[col]) / span
         return 1.0 - n if inv else n
 
     normed = {c: _norm(c, inv) for c, _, inv in avail}
 
-    # actual value at the midpoint (0.5) of each spoke for the ring label
-    def _midval(col, inv):
-        mid = (lo[col] + hi[col]) / 2.0
-        return mid
-
-    # --- angles ----------------------------------------------------------------
-    angles = [2 * math.pi * i / N for i in range(N)]
+    angles        = [2 * math.pi * i / N for i in range(N)]
     angles_closed = angles + [angles[0]]
-
-    colors = [plt.cm.tab10(i % 10) for i in range(n_models)]
+    colors        = [plt.cm.tab10(i % 10) for i in range(n_models)]
 
     plt.rcParams.update({"font.family": "serif", "font.size": 9})
 
-    fig = plt.figure(figsize=(5.5, 5.5))
-    ax  = fig.add_subplot(111, polar=True)
+    fig = plt.figure(figsize=(5.5, 7.0))
 
-    # rotate so first spoke points up
+    ax = fig.add_axes([0.10, 0.32, 0.80, 0.60], polar=True)
     ax.set_theta_offset(math.pi / 2)
     ax.set_theta_direction(-1)
 
-    # --- grid rings ------------------------------------------------------------
     ax.set_ylim(0, 1)
     ax.set_yticks([0.25, 0.5, 0.75, 1.0])
-    ax.set_yticklabels([])                 # hide default radial labels
-    ax.yaxis.grid(True, color="#cccccc", linestyle="dotted", linewidth=0.7)
+    ax.set_yticklabels([])
+    ax.yaxis.grid(True, color="#cccccc", linestyle="dotted", linewidth=0.6)
     ax.spines["polar"].set_visible(False)
+    ring_a = np.linspace(0, 2 * math.pi, 300)
+    ax.plot(ring_a, np.ones(300), color="#999999", linewidth=0.9, linestyle="--", zorder=1)
 
-    # light dotted rings at 0.25 and 0.75 are auto-drawn by the grid;
-    # add explicit dashed ring at 1.0
-    ring_angles = np.linspace(0, 2 * math.pi, 200)
-    ax.plot(ring_angles, np.ones(200), color="#aaaaaa", linewidth=0.8,
-            linestyle="--", zorder=1)
-
-    # --- spoke lines -----------------------------------------------------------
     ax.set_xticks(angles)
     ax.set_xticklabels([])
+    for a in angles:
+        ax.plot([a, a], [0, 1], color="#cccccc", linewidth=0.7, zorder=1)
 
-    for angle in angles:
-        ax.plot([angle, angle], [0, 1], color="#cccccc", linewidth=0.7, zorder=1)
-
-    # --- polygons + value annotations ------------------------------------------
-    # Collect (angle, radius, raw_value, color) for all dots first; annotate after
-    dot_annotations = []  # (angle, r_norm, raw_val, color)
-
-    for m_idx, model_name in enumerate(model_names):
-        vals  = [float(normed[c][m_idx]) for c, _, _ in avail]
-        raws  = [float(raw[c][m_idx])    for c, _, _ in avail]
+    for m_idx, mname in enumerate(model_names):
+        vals = [float(normed[c][m_idx]) for c, _, _ in avail]
         if any(np.isnan(v) for v in vals):
             continue
-        vals_closed = vals + [vals[0]]
-        ax.fill(angles_closed, vals_closed, color=colors[m_idx],
-                alpha=0.18, zorder=2)
-        ax.plot(angles_closed, vals_closed, color=colors[m_idx],
-                linewidth=1.6, zorder=3, label=model_name)
-        ax.scatter(angles, vals, color=colors[m_idx],
-                   s=28, zorder=4, clip_on=False)
-        for i, (r, rv) in enumerate(zip(vals, raws)):
-            dot_annotations.append((angles[i], r, rv, colors[m_idx]))
+        vc = vals + [vals[0]]
+        ax.fill(angles_closed, vc, color=colors[m_idx], alpha=0.18, zorder=2)
+        ax.plot(angles_closed, vc, color=colors[m_idx], linewidth=1.8,
+                zorder=3, label=DISP.get(mname, mname))
+        ax.scatter(angles, vals, color=colors[m_idx], s=32, zorder=4, clip_on=False)
 
-    # Draw per-spoke value labels OUTSIDE the outer ring so they never clash with lines.
-    # For each spoke: sort models by normalized value descending, then stack labels
-    # at r = 1.06, 1.14, 1.22  (outermost = highest-performing model).
-    _ann_kw = dict(fontsize=6, zorder=6, clip_on=False,
-                   bbox=dict(facecolor="white", edgecolor="none",
-                             pad=0.5, boxstyle="round,pad=0.08"))
-    RADII = [1.06, 1.15, 1.24]   # 3 stacking slots outside the ring
+    def _ha(a):
+        s = math.sin(a)
+        if abs(s) < 0.18: return "center"
+        return "left" if s > 0 else "right"
 
-    # Reorganise dot_annotations by spoke index
-    by_spoke = [[] for _ in range(N)]  # list of (r_norm, raw_val, color) per spoke
-    n_spokes = N
-    for ann_idx, (angle, r, rv, col) in enumerate(dot_annotations):
-        s_idx = ann_idx % n_spokes
-        by_spoke[s_idx].append((r, rv, col))
+    def _va(a):
+        c = math.cos(a)
+        if c >  0.55: return "bottom"
+        if c < -0.55: return "top"
+        return "center"
 
-    for s_idx, (col_name, _, _) in enumerate(avail):
-        angle   = angles[s_idx]
-        entries = sorted(by_spoke[s_idx], key=lambda x: x[0])  # ascending r → inner slot first
-        cos_a   = math.cos(angle)
-        if abs(cos_a) < 0.15:
-            ha = "center"
-        elif cos_a > 0:
-            ha = "left"
-        else:
-            ha = "right"
-        for slot, (r, rv, col) in enumerate(entries):
-            r_lbl = RADII[slot]
-            ax.text(angle, r_lbl, f"{rv:.3f}", ha=ha, va="center",
-                    color=col, **_ann_kw)
+    for i, (_, lbl, _) in enumerate(avail):
+        a = angles[i]
+        ax.text(a, 1.20, lbl, ha=_ha(a), va=_va(a),
+                fontsize=8.5, fontweight="bold", transform=ax.transData)
 
-    # --- spoke labels ----------------------------------------------------------
-    for i, (col, lbl, inv) in enumerate(avail):
-        angle = angles[i]
-        cos_a = math.cos(angle - math.pi / 2)   # adjust for theta_offset
-        sin_a = math.sin(angle - math.pi / 2)
-        # spoke label sits beyond the outermost value label (r=1.24)
-        pad = 1.38 if abs(math.sin(angle)) < 0.25 else 1.34
-        if abs(math.cos(angle)) < 0.15:
-            ha = "center"
-        elif math.cos(angle) > 0:
-            ha = "left"
-        else:
-            ha = "right"
-        # vertical alignment: bottom for top spoke, top for bottom, center elsewhere
-        if math.sin(angle) > 0.7:
-            va = "bottom"
-        elif math.sin(angle) < -0.7:
-            va = "top"
-        else:
-            va = "center"
-        ax.text(angle, pad, lbl, ha=ha, va=va,
-                fontsize=8, fontweight="bold",
-                transform=ax.transData)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, 1.28),
+              ncol=n_models, fontsize=8, frameon=True,
+              fancybox=False, edgecolor="#cccccc",
+              handlelength=1.4, columnspacing=0.9)
 
-    # --- legend ----------------------------------------------------------------
-    # upper-right is empty (between Single and Pair spokes); lower-right is occupied by Negation label
-    ax.legend(
-        loc="upper left",
-        bbox_to_anchor=(-0.18, 1.05),
-        fontsize=7.5, frameon=True,
-        fancybox=False, edgecolor="#cccccc",
-        ncol=1,
+    ax_t = fig.add_axes([0.02, 0.02, 0.96, 0.27])
+    ax_t.axis("off")
+
+    col_hdrs  = [lbl.replace("\n", " ") for _, lbl, _ in avail]
+    row_lbls  = [DISP.get(m, m) for m in model_names]
+    cell_text = [[f"{raw[c][m_idx]:.3f}" for c, _, _ in avail]
+                 for m_idx in range(n_models)]
+
+    best_cell_color = "#c6efce"
+    cell_colors = [["white"] * N for _ in range(n_models)]
+    for col_idx, (c, _, inv) in enumerate(avail):
+        vals_col = [raw[c][m] for m in range(n_models)]
+        best = int(np.argmin(vals_col) if inv else np.argmax(vals_col))
+        cell_colors[best][col_idx] = best_cell_color
+
+    tbl = ax_t.table(
+        cellText=cell_text,
+        rowLabels=row_lbls,
+        colLabels=col_hdrs,
+        cellLoc="center",
+        rowLoc="right",
+        loc="center",
+        cellColours=cell_colors,
     )
-    # No ax.set_title — use LaTeX figure caption instead
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(8)
+    tbl.scale(1.0, 1.55)
 
-    plt.tight_layout()
+    for (row, col), cell in tbl.get_celld().items():
+        cell.set_linewidth(0.5)
+        if col == -1 and row > 0:
+            m_idx = row - 1
+            cell.set_text_props(color=colors[m_idx], fontweight="bold")
+            cell.set_edgecolor("#aaaaaa")
+        elif row == 0:
+            cell.set_text_props(fontweight="bold")
+            cell.set_facecolor("#f0f0f0")
+
+    plt.rcParams.update({"font.family": "sans-serif"})
     base = plots_dir / "radar"
     fig.savefig(str(base) + ".pdf", bbox_inches="tight")
     fig.savefig(str(base) + ".png", dpi=300, bbox_inches="tight")
     plt.close(fig)
-    plt.rcParams.update({"font.family": "sans-serif"})   # restore
     log.info(f"Saved → {base}.pdf / .png")
 
 
@@ -1040,8 +1011,8 @@ def main():
                         help="Which query types to evaluate (passed to eval_model.py). Default: all")
     parser.add_argument("--skip_existing", action="store_true",
                         help="Skip models whose results CSV already exists")
-    parser.add_argument("--batch_size", type=int, default=64,
-                        help="Batch size for image and text encoding (default: 64)")
+    parser.add_argument("--batch_size", type=int, default=128,
+                        help="Batch size for image and text encoding (default: 128)")
     parser.add_argument("--wandb-project", default=None,
                         help="W&B project name. Omit to disable W&B logging.")
     parser.add_argument("--wandb-run-name", default=None,
@@ -1173,7 +1144,31 @@ def main():
     make_plots(all_results, macro_summary, plots_dir)
     make_table_plots(macro_summary, plots_dir)
     make_parallel_coordinates_plot(macro_summary, plots_dir)
-    make_radar_plot(macro_summary, plots_dir)
+
+    # Radar always uses these 3 specific models; load from individual CSVs
+    # so it works even when the MODELS list is different from a prior run.
+    RADAR_MODELS = {
+        "vanilla_clip_not_trained": "results_vanilla_clip_not_trained",
+        "cxrclip_r50_mc":           "results_cxrclip_r50_mc",
+        "labeldot_hnm_swint_hnm03": "results_labeldot_hnm_swint_hnm03",
+    }
+    radar_results = {}
+    for mname, stem in RADAR_MODELS.items():
+        dfs = []
+        for suffix in ["", "_robust"]:
+            p = output_dir / f"{stem}{suffix}.csv"
+            if p.exists():
+                df = pd.read_csv(p)
+                if suffix == "_robust":
+                    df["type"] = df["type"].str.replace("negative", "negative_robust", regex=False)
+                dfs.append(df)
+        if dfs:
+            radar_results[mname] = pd.concat(dfs, ignore_index=True)
+    if len(radar_results) >= 2:
+        radar_macro = build_macro_summary(radar_results)
+        make_radar_plot(radar_macro, plots_dir)
+    else:
+        make_radar_plot(macro_summary, plots_dir)
 
     # ── Rankings ──────────────────────────────────────────────────────────────
     build_rankings(macro_summary, output_dir)

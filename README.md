@@ -1,7 +1,6 @@
-# CXR-Retrieve: CLIP-based Chest X-ray Retrieval
+# CXR-Retrieve: Compositional Text-to-Image Retrieval in Chest Radiography
 
-CLIP fine-tuning with label-aware contrastive learning on MIMIC-CXR.  
-Aligns chest X-ray images with radiology report text for retrieval tasks.
+Label-aware contrastive fine-tuning of CLIP/CXR-CLIP on MIMIC-CXR for retrieval of chest X-rays by structured text queries — single findings, co-occurring findings, and negation queries.
 
 ---
 
@@ -12,18 +11,18 @@ conda env create -f environment.yml
 conda activate thesis_clip
 ```
 
-> Requires CUDA 12.1 and a GPU with ≥11 GB VRAM (or two GPUs for the default multi-GPU setup).
+Requires CUDA 12.1 and ≥11 GB VRAM (single GPU) or two GPUs for the default multi-GPU setup.
 
 ---
 
 ## Dataset Setup
 
-**Data required:**
+**Files needed:**
 - `cxr_data/all_txt_data_and_labels.csv` — full MIMIC-CXR CSV with CheXpert labels
-- `mimic-cxr-2.0.0-split.csv.gz` — official split file from PhysioNet
-- MIMIC-CXR JPG images (default path: `cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/...`)
+- `mimic-cxr-2.0.0-split.csv.gz` — official split file (PhysioNet)
+- MIMIC-CXR JPG images at `cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/...`
 
-**Step 1 — Create train/test CSVs (run once):**
+**Step 1 — Create train/test CSVs (once):**
 
 ```bash
 python baseline_eval/create_train_test_sets.py \
@@ -35,7 +34,7 @@ python baseline_eval/create_train_test_sets.py \
 
 Produces ~227k train rows and 5,159 official test rows.
 
-**Step 2 — Build the eval image gallery (run once):**
+**Step 2 — Build the eval image gallery (once):**
 
 ```bash
 python baseline_eval/build_baseline.py \
@@ -43,75 +42,96 @@ python baseline_eval/build_baseline.py \
     --output_dir ./eval_outputs/baseline_output_official_test
 ```
 
-Creates symlinks and paired text files for the 5,159 test images under `eval_outputs/baseline_output_official_test/paired_data/`.
+Creates symlinks for all 5,159 test images under `eval_outputs/baseline_output_official_test/paired_data/`.
+
+---
+
+## CXR-CLIP Baseline Checkpoints
+
+The evaluation compares against [CXR-CLIP](https://github.com/Soomit/cxr-clip) pretrained checkpoints.
+Download the checkpoint archives from the CXR-CLIP GitHub releases and extract them under `valid_pretrained_models_to_try/`:
+
+```
+valid_pretrained_models_to_try/
+    r50_m/          ← ResNet-50, MIMIC only
+    r50_mc/         ← ResNet-50, MIMIC + CheXpert
+    swint_m/        ← Swin-T, MIMIC only
+    swint_mc/       ← Swin-T, MIMIC + CheXpert
+```
+
+Pack each directory into a `.pt` file that `torch.load()` accepts (run once):
+
+```bash
+python baseline_eval/build_cxrclip_checkpoints.py
+```
+
+Produces `r50_m.pt`, `r50_mc.pt`, `swint_m.pt`, `swint_mc.pt` in the same directory.
+Use `--overwrite` to re-pack after adding new checkpoints.
 
 ---
 
 ## Training
 
-The best-performing configuration uses LoRA on ViT-B/32 (OpenAI CLIP) with the `label_dot` match mode:
+The best-performing configuration is LoRA fine-tuning from the CXR-CLIP Swin-T checkpoint using the `label_dot` match mode with hard negative mining. Run:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 train_lora.py \
-    --base-model ViT-B-32 --pretrained openai \
-    --precision bf16 \
-    --lr 1e-4 --min-lr 1e-8 \
-    --batch-size 64 --epochs 100 \
-    --warmup-epochs 5 --patience 10 \
-    --nan-mode ignore \
-    --loss clip \
-    --caption-mode all \
-    --match-mode label_dot \
-    --lora-r 16 --lora-alpha 16 \
-    --output-dir ./experiments/my_run
+bash run_finetune.sh   # CXR-CLIP SwinT fine-tune (paper model)
+bash run.sh            # ViT-B/32 from OpenAI CLIP
 ```
 
-Effective batch size: 64 per GPU × 2 GPUs = 128.
-
-Or just run the provided script (launches in a tmux session):
-
-```bash
-bash run.sh
-```
-
-**Key training flags:**
+Both scripts launch a tmux session. Key flags:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--match-mode` | `standard` | `label_dot` is the recommended mode |
-| `--caption-mode` | `both` | `all` adds negation captions (50% single / 25% pair / 25% negation) |
-| `--nan-mode` | `negative` | `ignore` treats unlabelled findings as unknown (recommended) |
-| `--lora-r` | 16 | LoRA rank |
-| `--lora-alpha` | 16 | LoRA scaling factor |
-| `--batch-size` | — | Per-GPU; effective batch = `batch_size × num_gpus` |
+| `--base-model` | `ViT-B-32` | OpenCLIP model name (ignored when `--cxrclip-finetune` is set) |
+| `--pretrained` | `openai` | OpenCLIP pretrained tag |
+| `--match-mode` | `label_dot` | `K(i,j) = l_i · l_j` soft multi-positive target |
+| `--caption-mode` | `all` | 50% single / 25% pair / 25% negation captions |
+| `--nan-mode` | `ignore` | NaN labels treated as unknown (not as absent) |
+| `--hnm-weight` | `0.3` | Hard negative mining repulsion strength |
+| `--batch-size` | `70` | Per-GPU; effective batch = `70 × 2 GPUs = 140` |
+| `--lr` / `--min-lr` | `1e-4` / `1e-8` | Cosine schedule bounds |
+| `--warmup-epochs` | `5` | Linear LR warmup |
+| `--patience` | `10` | Early stopping (epochs without improvement) |
+| `--lora-r` / `--lora-alpha` | `16` / `16` | LoRA rank and scaling |
 
-Training saves `experiments/my_run/final_merged.pt` (merged weights, ready for eval).
+Training saves:
+- `experiments/<name>/epoch_N_adapter.pt` — LoRA adapter at each epoch (~11 MB)
+- `experiments/<name>/final_merged.pt` — merged weights, ready for evaluation
 
 ---
 
 ## Evaluation
 
-**Evaluate all models and compare:**
+**Run all models and generate comparison plots:**
+
+```bash
+bash eval.sh
+```
+
+Or directly:
 
 ```bash
 python baseline_eval/run_all_evals.py \
     --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
     --csv        cxr_data/mimic_cxr_official_test.csv \
     --output_dir ./eval_outputs/my_results \
-    --batch_size 64
+    --batch_size 128 \
+    --skip_existing
 ```
 
-Add `--skip_existing` to skip models already evaluated. Each model is evaluated in 4 passes automatically (lenient/strict NaN handling × default/rephrased query templates), producing `summary_negative_nan.csv`, `summary_negative_strict.csv`, `summary_negative_robust_*.csv`, and corresponding plots.
+Each model is evaluated in 2 passes automatically:
+- **Pass 1:** single + pair + negative queries (standard template `"A and no B"`)
+- **Pass 2:** negative queries only, rephrased template (`"an image with A but without B"`)
 
-**To include your fine-tuned model**, add an entry to the `MODELS` list in `baseline_eval/run_all_evals.py`:
+**To add your fine-tuned model**, uncomment or add an entry to the `MODELS` list in `baseline_eval/run_all_evals.py`:
 
 ```python
 {
     "name": "my_run",
-    "model_type": "finetuned",
-    "finetuned_base_model": "ViT-B-32",
-    "finetuned_pretrained": "openai",
-    "finetuned_checkpoint": "experiments/my_run/final_merged.pt",
+    "model_type": "cxrclip_finetune",
+    "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
+    "cxrclip_finetune_merged_checkpoint": "experiments/my_run/final_merged.pt",
 },
 ```
 
@@ -119,27 +139,38 @@ Add `--skip_existing` to skip models already evaluated. Each model is evaluated 
 
 ```bash
 python baseline_eval/eval_model.py \
-    --model_type finetuned --name my_run \
-    --finetuned_base_model ViT-B-32 --finetuned_pretrained openai \
-    --finetuned_checkpoint ./experiments/my_run/final_merged.pt \
+    --model_type cxrclip_finetune --name my_run \
+    --cxrclip_finetune_image_checkpoint valid_pretrained_models_to_try/swint_mc.pt \
+    --cxrclip_finetune_merged_checkpoint experiments/my_run/final_merged.pt \
     --paired_dir ./eval_outputs/baseline_output_official_test/paired_data \
     --csv cxr_data/mimic_cxr_official_test.csv
 ```
 
-**Eval metrics:**
+**Output files** (in `--output_dir`):
+
+| File | Contents |
+|------|----------|
+| `summary_single.csv` | P@K / R@K, single-label queries |
+| `summary_pair.csv` | P@K / R@K, pair queries |
+| `summary_negative.csv` | P@K / R@K / HNRR@K, negation queries |
+| `summary_negative_robust.csv` | Same with rephrased template |
+| `summary_macro.csv` | Macro-averaged across all query types, one row per model |
+| `plots/radar.pdf` | Spider chart: all models × all metrics (single-column paper figure) |
+| `plots/parallel_coordinates.png` | Parallel coordinates comparison |
+
+**Metrics:**
 
 | Metric | Description |
 |--------|-------------|
-| P@K | Precision at K — fraction of top-K retrieved images that satisfy all query constraints, macro-averaged |
-| R@K | Recall at K — 1 if any relevant image appears in top-K, else 0 (binary), macro-averaged |
+| P@K | Precision at K — fraction of top-K retrieved images satisfying all query constraints, macro-averaged |
+| R@K | Recall at K — 1 if any relevant image appears in top-K, else 0, macro-averaged |
 | HNRR@K | Hard Negative Retrieval Rate — for `"A and no B"` queries: fraction of top-K results where both A and B are confirmed present; **lower is better** |
 
-Three query tiers (10 CheXpert labels active): **single** (10 queries), **pair** (45 queries), **negative** (90 queries per pass).
+**Query types** (10 CheXpert labels active):
 
-Negative queries are evaluated twice: *lenient* (`--nan-mode negative`, NaN treated as absent) and *strict* (`--nan-mode ignore`, only explicit CSV 0 counts as absent). A robustness pass also runs with a rephrased template (`"an image with A but without B"`).
-
----
-
-## Reference
-
-See `updated_guide.md` for detailed documentation on all training knobs (match modes, caption modes, loss variants, nan modes, recipes).
+| Type | Count | Example |
+|------|-------|---------|
+| single | 10 | `"atelectasis"` |
+| pair | 45 | `"atelectasis and edema"` |
+| negative | 90 | `"atelectasis and no edema"` |
+| negative (robust) | 90 | `"an image with atelectasis but without edema"` |
