@@ -161,4 +161,148 @@ print(f"Samples with at least 1 positive and at least 1 uncertain label: {both_p
 # how many items have at least 1 positive and at least 1 missing?
 at_least_1_nan = df[chexpert_cols].isna().any(axis=1)
 both_pos_nan = (at_least_1_pos & at_least_1_nan).sum()
-print(f"Samples with at least 1 positive and at least 1 NaN label: {both_pos_nan:,} ({both_pos_nan/len(df):.3%})")  
+print(f"Samples with at least 1 positive and at least 1 NaN label: {both_pos_nan:,} ({both_pos_nan/len(df):.3%})")
+
+# ── Co-occurrence matrix ───────────────────────────────────────────────────────
+print("\nBuilding co-occurrence matrix...")
+
+label_names = [c.replace("chexpert_", "") for c in chexpert_cols]
+
+pos_df = (df[chexpert_cols] == 1)                              # (N, L) bool
+co_occ = (pos_df.values.astype(np.int32).T
+          @ pos_df.values.astype(np.int32))                    # (L, L) int
+pos_counts = pos_df.sum().values                               # (L,)
+
+# pct[i, j] = 100 * P(j=1 | i=1)  — diagonal is always 100
+with np.errstate(divide="ignore", invalid="ignore"):
+    pct = np.where(
+        pos_counts[:, None] > 0,
+        100.0 * co_occ / pos_counts[:, None],
+        0.0,
+    )
+pct_int = np.round(pct).astype(int)
+
+# ── Figure ────────────────────────────────────────────────────────────────────
+L = len(label_names)
+
+plt.rcParams.update({
+    "font.family": "serif",
+    "font.size": 10,
+    "axes.titlesize": 11,
+    "axes.labelsize": 10,
+})
+
+fig, ax = plt.subplots(figsize=(7, 5.8))
+
+# Main heatmap (off-diagonal)
+diag_mask = np.eye(L, dtype=bool)
+sns.heatmap(
+    np.where(diag_mask, np.nan, pct_int.astype(float)),
+    annot=pct_int,
+    fmt="d",
+    cmap="Blues",
+    vmin=0,
+    vmax=100,
+    linewidths=0.3,
+    linecolor="#cccccc",
+    ax=ax,
+    square=True,
+    cbar_kws={"label": r"$P(\mathrm{col}=1 \mid \mathrm{row}=1)$ (%)", "shrink": 0.8, "pad": 0.02},
+    annot_kws={"size": 8.5, "color": "#1a1a1a"},
+    xticklabels=label_names,
+    yticklabels=label_names,
+)
+
+# Diagonal cells — dark slate so they read as "always 100"
+for i in range(L):
+    ax.add_patch(mpatches.Rectangle(
+        (i, i), 1, 1,
+        fill=True, color="#2c3e50", zorder=3, lw=0,
+    ))
+    ax.text(
+        i + 0.5, i + 0.5, "100",
+        ha="center", va="center",
+        fontsize=8.5, fontweight="bold", color="white", zorder=4,
+    )
+
+ax.set_xticklabels(label_names, rotation=40, ha="right", fontsize=9)
+ax.set_yticklabels(label_names, rotation=0, fontsize=9)
+ax.set_xlabel(None)
+ax.set_ylabel(None)
+ax.set_title("CheXpert label co-occurrence", fontsize=11, pad=10)
+
+plt.tight_layout()
+base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cooccurrence_matrix")
+fig.savefig(base_path + ".pdf", bbox_inches="tight")
+fig.savefig(base_path + ".png", dpi=300, bbox_inches="tight")
+plt.close(fig)
+print(f"Saved → {base_path}.pdf / .png")
+
+# ── Pair-query difficulty figure ──────────────────────────────────────────────
+print("\nBuilding pair-query difficulty figure...")
+
+TEST_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "cxr_data", "mimic_cxr_official_test.csv")
+df_test = pd.read_csv(TEST_CSV)
+
+pairs = []
+for i in range(len(chexpert_cols)):
+    for j in range(i + 1, len(chexpert_cols)):
+        ci, cj = chexpert_cols[i], chexpert_cols[j]
+        count = int(((df_test[ci] == 1) & (df_test[cj] == 1)).sum())
+        li = label_names[i]
+        lj = label_names[j]
+        pairs.append((f"{li} & {lj}", count))
+
+pairs.sort(key=lambda x: x[1])
+pair_labels = [p[0] for p in pairs]
+pair_counts = [p[1] for p in pairs]
+
+TIER_RED    = "#e74c3c"
+TIER_ORANGE = "#e67e22"
+TIER_BLUE   = "#2980b9"
+
+def _tier_color(c):
+    if c <= 10:
+        return TIER_RED
+    if c < 50:
+        return TIER_ORANGE
+    return TIER_BLUE
+
+colors = [_tier_color(c) for c in pair_counts]
+
+plt.rcParams.update({
+    "font.family": "serif",
+    "font.size":   9,
+    "axes.titlesize": 11,
+    "axes.labelsize": 10,
+})
+
+fig, ax = plt.subplots(figsize=(7, 9))
+
+y_pos = np.arange(len(pair_labels))
+bars = ax.barh(y_pos, pair_counts, color=colors, height=0.7, edgecolor="none")
+
+ax.set_yticks(y_pos)
+ax.set_yticklabels(pair_labels, fontsize=8)
+ax.set_xlabel("Number of relevant images in test gallery", fontsize=9)
+ax.set_title("Pair query difficulty — co-occurrence counts\n(test gallery: 5,159 images)", fontsize=10, pad=8)
+ax.axvline(x=50, color="#555555", linewidth=1.0, linestyle="--")
+ax.text(52, len(pair_labels) - 0.5, "50 relevant", va="top", fontsize=8, color="#555555")
+ax.set_xlim(0, max(pair_counts) * 1.12)
+ax.xaxis.grid(True, alpha=0.3)
+ax.set_axisbelow(True)
+
+import matplotlib.patches as mpatches
+legend_patches = [
+    mpatches.Patch(color=TIER_RED,    label=r"$\leq$10 relevant"),
+    mpatches.Patch(color=TIER_ORANGE, label="11–49 relevant"),
+    mpatches.Patch(color=TIER_BLUE,   label=r"$\geq$50 relevant"),
+]
+ax.legend(handles=legend_patches, fontsize=8, loc="lower right")
+
+plt.tight_layout()
+pair_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pair_query_difficulty")
+fig.savefig(pair_path + ".pdf", bbox_inches="tight")
+fig.savefig(pair_path + ".png", dpi=300, bbox_inches="tight")
+plt.close(fig)
+print(f"Saved → {pair_path}.pdf / .png")

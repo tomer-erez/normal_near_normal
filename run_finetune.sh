@@ -8,7 +8,7 @@
 #
 # Loss: label_dot clip — soft multi-positive labels, nan=ignore.
 
-name="labeldot_hnm_swint_hnm03"
+name="labeldot_hnm_swint_hnm01"
 set -e
 cd "$(dirname "$0")"
 source ~/miniconda3/etc/profile.d/conda.sh
@@ -28,7 +28,7 @@ tmux new-session -d -s $name "
         --loss clip \
         --caption-mode all \
         --match-mode label_dot \
-        --hnm-weight 0.3 \
+        --hnm-weight 0.1 \
         --lora-r 12 \
         --lora-alpha 12 \
         --lora-dropout 0.05 \

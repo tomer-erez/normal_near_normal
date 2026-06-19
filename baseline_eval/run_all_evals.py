@@ -131,14 +131,14 @@ MODELS = [
     #     "finetuned_checkpoint": "experiments/label_dot_sigliploss/final_merged.pt",
     # },   
     
-    {
-        "name": "labeldot_vanilla_clip",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/claude_hyperparms_label_dot_clip/final_merged.pt",
-    },   
+    # {
+    #     "name": "labeldot_vanilla_clip",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/claude_hyperparms_label_dot_clip/final_merged.pt",
+    # },   
                                                                         
 
     # {
@@ -148,13 +148,13 @@ MODELS = [
     #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/r50_mc.pt",
     #     "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_r50_labeldot_unfrozen/final_merged.pt",
     # },
-    {
-        "name": "labeldot_finetune_swintmc",
-        "model_type": "cxrclip_finetune",
-        "checkpoint": None,
-        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-        "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_swint_labeldot/final_merged.pt",
-    },
+    # {
+    #     "name": "labeldot_finetune_swintmc",
+    #     "model_type": "cxrclip_finetune",
+    #     "checkpoint": None,
+    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
+    #     "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_swint_labeldot/final_merged.pt",
+    # },
     
     #     {
     #     "name": "labeldot_nanmode_negative_from_swint",
@@ -191,31 +191,31 @@ MODELS = [
     # },   
     
     
-    {
-        "name": "labeldot_hnm005_vanilla",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/labeldot_hnm_vanilla/final_merged.pt",
-    },   
+    # {
+    #     "name": "labeldot_hnm005_vanilla",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/labeldot_hnm_vanilla/final_merged.pt",
+    # },   
                 
-    {
-        "name": "labeldot_hnm005_swint",
-        "model_type": "cxrclip_finetune",
-        "checkpoint": None,
-        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-        "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint/final_merged.pt",
-    },   
+    # {
+    #     "name": "labeldot_hnm005_swint",
+    #     "model_type": "cxrclip_finetune",
+    #     "checkpoint": None,
+    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
+    #     "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint/final_merged.pt",
+    # },   
     
-                        {
-        "name": "labeldot_hnm_vanilla_hnm03",
-        "model_type": "finetuned",
-        "checkpoint": None,
-        "finetuned_base_model": "ViT-B-32",
-        "finetuned_pretrained": "",
-        "finetuned_checkpoint": "experiments/labeldot_hnm_vanilla_hnm03/final_merged.pt",
-    },   
+    #                     {
+    #     "name": "labeldot_hnm_vanilla_hnm03",
+    #     "model_type": "finetuned",
+    #     "checkpoint": None,
+    #     "finetuned_base_model": "ViT-B-32",
+    #     "finetuned_pretrained": "",
+    #     "finetuned_checkpoint": "experiments/labeldot_hnm_vanilla_hnm03/final_merged.pt",
+    # },   
                 
     {
         "name": "labeldot_hnm_swint_hnm03",
@@ -724,6 +724,280 @@ def make_table_plots(macro_summary: pd.DataFrame, plots_dir: Path):
         log.info(f"Saved → {path}")
 
 
+# ── Parallel coordinates plot ─────────────────────────────────────────────────
+
+def make_parallel_coordinates_plot(macro_summary: pd.DataFrame, plots_dir: Path):
+    """
+    One line per model across axes: Single P@5, Pair P@5, Negation P@5,
+    Neg-Robust P@5, HNRR@5 (inverted so higher = better).
+    All axes are independently normalized to [0, 1] for comparability.
+    """
+    plots_dir.mkdir(parents=True, exist_ok=True)
+
+    # (summary_column, display_label, invert_axis)
+    AXES_DEF = [
+        ("single_P@5",          "Single\nP@5",            False),
+        ("pair_P@5",            "Pair\nP@5",              False),
+        ("negative_P@5",        "Negation\nP@5",          False),
+        ("negative_robust_P@5", "Neg-Robust\nP@5",        False),
+        ("negative_HNRR@5",     "HNRR@5\n(lower=better)", True),
+    ]
+    avail = [(col, lbl, inv) for col, lbl, inv in AXES_DEF if col in macro_summary.columns]
+    if len(avail) < 2:
+        log.warning("Parallel coordinates: not enough metrics available, skipping.")
+        return
+
+    model_names = macro_summary["model"].tolist()
+    n_models = len(model_names)
+    n_ax = len(avail)
+
+    raw = {col: macro_summary[col].values.astype(float) for col, _, _ in avail}
+
+    def _norm(vals: np.ndarray, inverted: bool) -> np.ndarray:
+        lo, hi = np.nanmin(vals), np.nanmax(vals)
+        if hi == lo:
+            return np.full_like(vals, 0.5)
+        n = (vals - lo) / (hi - lo)
+        return 1.0 - n if inverted else n
+
+    normed = {col: _norm(raw[col], inv) for col, _, inv in avail}
+
+    colors = [plt.cm.tab10(i % 10) for i in range(n_models)]
+
+    fig, ax = plt.subplots(figsize=(max(11, n_ax * 2.6), 6))
+    # extra room: top for title, bottom for legend + axis labels
+    fig.subplots_adjust(top=0.88, bottom=0.22)
+    ax.set_xlim(-0.5, n_ax - 0.5)
+    ax.set_ylim(-0.05, 1.05)   # tight — labels go outside via offset
+    ax.axis("off")
+
+    x_pos = list(range(n_ax))
+
+    _lbl_kw = dict(fontsize=7, color="#444444",
+                   bbox=dict(facecolor="white", edgecolor="#cccccc", pad=2.0,
+                             boxstyle="round,pad=0.2"), zorder=5)
+
+    # Vertical axis lines + min/max tick labels placed OUTSIDE data range
+    for i, (col, lbl, inv) in enumerate(avail):
+        ax.axvline(x=i, color="#aaaaaa", linewidth=1.0, zorder=1)
+        lo, hi = float(np.nanmin(raw[col])), float(np.nanmax(raw[col]))
+        bottom_val = hi if inv else lo   # value shown at y=0 end
+        top_val    = lo if inv else hi   # value shown at y=1 end
+        # tick nubs
+        ax.plot([i - 0.03, i + 0.03], [0.0, 0.0], color="#999999", linewidth=0.8, zorder=2)
+        ax.plot([i - 0.03, i + 0.03], [1.0, 1.0], color="#999999", linewidth=0.8, zorder=2)
+        # labels sit just outside [0, 1] so data lines never cover them
+        ax.text(i, -0.04, f"{bottom_val:.3f}", ha="center", va="top",    **_lbl_kw)
+        ax.text(i,  1.04, f"{top_val:.3f}",    ha="center", va="bottom", **_lbl_kw)
+        # axis name below the plot (in figure space, not data space)
+        ax.text(i, -0.13, lbl, ha="center", va="top",
+                fontsize=8.5, fontweight="bold", transform=ax.transData)
+        if inv:
+            ax.text(i, 1.13, "▲ better", ha="center", va="bottom",
+                    fontsize=6.5, color="#888888", style="italic")
+
+    # One line per model
+    for m_idx, model_name in enumerate(model_names):
+        ys = [float(normed[col][m_idx]) for col, _, _ in avail]
+        if any(np.isnan(v) for v in ys):
+            continue
+        ax.plot(x_pos, ys, marker="o", markersize=5, linewidth=1.8,
+                color=colors[m_idx], alpha=0.85, label=model_name, zorder=3)
+
+    # Legend at the bottom, below the axis labels
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.28),
+        ncol=min(n_models, 4), fontsize=8, frameon=True,
+        fancybox=False, edgecolor="#cccccc",
+    )
+    ax.set_title(
+        "Model comparison — parallel coordinates\n"
+        "(axes independently normalized; HNRR inverted so ↑ = better)",
+        fontsize=10, pad=10,
+    )
+
+    plt.tight_layout()
+    path = plots_dir / "parallel_coordinates.png"
+    fig.savefig(path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    log.info(f"Saved → {path}")
+
+
+# ── Radar / spider chart ──────────────────────────────────────────────────────
+
+def make_radar_plot(macro_summary: pd.DataFrame, plots_dir: Path):
+    """
+    Spider/radar chart — one filled polygon per model, one spoke per metric.
+    Designed to fit in a single column of a two-column paper (figsize 4.5×4.5 in).
+    """
+    import math
+
+    plots_dir.mkdir(parents=True, exist_ok=True)
+
+    SPOKES = [
+        ("single_P@5",          "Single\nP@5",        False),
+        ("pair_P@5",            "Pair\nP@5",          False),
+        ("negative_P@5",        "Negation\nP@5",      False),
+        ("negative_robust_P@5", "Neg-Robust\nP@5",    False),
+        ("negative_HNRR@5",     "HNRR@5\n(↑=lower)",  True),
+    ]
+    avail = [(c, l, inv) for c, l, inv in SPOKES if c in macro_summary.columns]
+    N = len(avail)
+    if N < 3:
+        log.warning("Radar plot: fewer than 3 axes available, skipping.")
+        return
+
+    model_names = macro_summary["model"].tolist()
+    n_models = len(model_names)
+
+    # --- normalize each spoke to [0,1]; inverted spokes: flip so 1=best -------
+    raw   = {c: macro_summary[c].values.astype(float) for c, _, _ in avail}
+    lo    = {c: float(np.nanmin(v)) for c, v in raw.items()}
+    hi    = {c: float(np.nanmax(v)) for c, v in raw.items()}
+
+    def _norm(col, inv):
+        span = hi[col] - lo[col]
+        if span == 0:
+            return np.full(len(macro_summary), 0.5)
+        n = (raw[col] - lo[col]) / span
+        return 1.0 - n if inv else n
+
+    normed = {c: _norm(c, inv) for c, _, inv in avail}
+
+    # actual value at the midpoint (0.5) of each spoke for the ring label
+    def _midval(col, inv):
+        mid = (lo[col] + hi[col]) / 2.0
+        return mid
+
+    # --- angles ----------------------------------------------------------------
+    angles = [2 * math.pi * i / N for i in range(N)]
+    angles_closed = angles + [angles[0]]
+
+    colors = [plt.cm.tab10(i % 10) for i in range(n_models)]
+
+    plt.rcParams.update({"font.family": "serif", "font.size": 9})
+
+    fig = plt.figure(figsize=(5.5, 5.5))
+    ax  = fig.add_subplot(111, polar=True)
+
+    # rotate so first spoke points up
+    ax.set_theta_offset(math.pi / 2)
+    ax.set_theta_direction(-1)
+
+    # --- grid rings ------------------------------------------------------------
+    ax.set_ylim(0, 1)
+    ax.set_yticks([0.25, 0.5, 0.75, 1.0])
+    ax.set_yticklabels([])                 # hide default radial labels
+    ax.yaxis.grid(True, color="#cccccc", linestyle="dotted", linewidth=0.7)
+    ax.spines["polar"].set_visible(False)
+
+    # light dotted rings at 0.25 and 0.75 are auto-drawn by the grid;
+    # add explicit dashed ring at 1.0
+    ring_angles = np.linspace(0, 2 * math.pi, 200)
+    ax.plot(ring_angles, np.ones(200), color="#aaaaaa", linewidth=0.8,
+            linestyle="--", zorder=1)
+
+    # --- spoke lines -----------------------------------------------------------
+    ax.set_xticks(angles)
+    ax.set_xticklabels([])
+
+    for angle in angles:
+        ax.plot([angle, angle], [0, 1], color="#cccccc", linewidth=0.7, zorder=1)
+
+    # --- polygons + value annotations ------------------------------------------
+    # Collect (angle, radius, raw_value, color) for all dots first; annotate after
+    dot_annotations = []  # (angle, r_norm, raw_val, color)
+
+    for m_idx, model_name in enumerate(model_names):
+        vals  = [float(normed[c][m_idx]) for c, _, _ in avail]
+        raws  = [float(raw[c][m_idx])    for c, _, _ in avail]
+        if any(np.isnan(v) for v in vals):
+            continue
+        vals_closed = vals + [vals[0]]
+        ax.fill(angles_closed, vals_closed, color=colors[m_idx],
+                alpha=0.18, zorder=2)
+        ax.plot(angles_closed, vals_closed, color=colors[m_idx],
+                linewidth=1.6, zorder=3, label=model_name)
+        ax.scatter(angles, vals, color=colors[m_idx],
+                   s=28, zorder=4, clip_on=False)
+        for i, (r, rv) in enumerate(zip(vals, raws)):
+            dot_annotations.append((angles[i], r, rv, colors[m_idx]))
+
+    # Draw per-spoke value labels OUTSIDE the outer ring so they never clash with lines.
+    # For each spoke: sort models by normalized value descending, then stack labels
+    # at r = 1.06, 1.14, 1.22  (outermost = highest-performing model).
+    _ann_kw = dict(fontsize=6, zorder=6, clip_on=False,
+                   bbox=dict(facecolor="white", edgecolor="none",
+                             pad=0.5, boxstyle="round,pad=0.08"))
+    RADII = [1.06, 1.15, 1.24]   # 3 stacking slots outside the ring
+
+    # Reorganise dot_annotations by spoke index
+    by_spoke = [[] for _ in range(N)]  # list of (r_norm, raw_val, color) per spoke
+    n_spokes = N
+    for ann_idx, (angle, r, rv, col) in enumerate(dot_annotations):
+        s_idx = ann_idx % n_spokes
+        by_spoke[s_idx].append((r, rv, col))
+
+    for s_idx, (col_name, _, _) in enumerate(avail):
+        angle   = angles[s_idx]
+        entries = sorted(by_spoke[s_idx], key=lambda x: x[0])  # ascending r → inner slot first
+        cos_a   = math.cos(angle)
+        if abs(cos_a) < 0.15:
+            ha = "center"
+        elif cos_a > 0:
+            ha = "left"
+        else:
+            ha = "right"
+        for slot, (r, rv, col) in enumerate(entries):
+            r_lbl = RADII[slot]
+            ax.text(angle, r_lbl, f"{rv:.3f}", ha=ha, va="center",
+                    color=col, **_ann_kw)
+
+    # --- spoke labels ----------------------------------------------------------
+    for i, (col, lbl, inv) in enumerate(avail):
+        angle = angles[i]
+        cos_a = math.cos(angle - math.pi / 2)   # adjust for theta_offset
+        sin_a = math.sin(angle - math.pi / 2)
+        # spoke label sits beyond the outermost value label (r=1.24)
+        pad = 1.38 if abs(math.sin(angle)) < 0.25 else 1.34
+        if abs(math.cos(angle)) < 0.15:
+            ha = "center"
+        elif math.cos(angle) > 0:
+            ha = "left"
+        else:
+            ha = "right"
+        # vertical alignment: bottom for top spoke, top for bottom, center elsewhere
+        if math.sin(angle) > 0.7:
+            va = "bottom"
+        elif math.sin(angle) < -0.7:
+            va = "top"
+        else:
+            va = "center"
+        ax.text(angle, pad, lbl, ha=ha, va=va,
+                fontsize=8, fontweight="bold",
+                transform=ax.transData)
+
+    # --- legend ----------------------------------------------------------------
+    # upper-right is empty (between Single and Pair spokes); lower-right is occupied by Negation label
+    ax.legend(
+        loc="upper left",
+        bbox_to_anchor=(-0.18, 1.05),
+        fontsize=7.5, frameon=True,
+        fancybox=False, edgecolor="#cccccc",
+        ncol=1,
+    )
+    # No ax.set_title — use LaTeX figure caption instead
+
+    plt.tight_layout()
+    base = plots_dir / "radar"
+    fig.savefig(str(base) + ".pdf", bbox_inches="tight")
+    fig.savefig(str(base) + ".png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    plt.rcParams.update({"font.family": "sans-serif"})   # restore
+    log.info(f"Saved → {base}.pdf / .png")
+
+
 # ── Rankings ──────────────────────────────────────────────────────────────────
 
 def build_rankings(macro_summary: pd.DataFrame, output_dir: Path) -> pd.DataFrame:
@@ -898,6 +1172,8 @@ def main():
     plots_dir = output_dir / "plots"
     make_plots(all_results, macro_summary, plots_dir)
     make_table_plots(macro_summary, plots_dir)
+    make_parallel_coordinates_plot(macro_summary, plots_dir)
+    make_radar_plot(macro_summary, plots_dir)
 
     # ── Rankings ──────────────────────────────────────────────────────────────
     build_rankings(macro_summary, output_dir)

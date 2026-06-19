@@ -1,6 +1,6 @@
 #!/bin/bash
 
-name="compare_find_best_model"
+name="find_best_model_hnm_vs_labeldot"
 set -e
 cd "$(dirname "$0")"
 source ~/miniconda3/etc/profile.d/conda.sh
