@@ -68,12 +68,12 @@ LABEL_TO_IDX = {col: i for i, col in enumerate(LABEL_COLS)}
 SHORT_LABELS = [l.replace("Enlarged Cardiomediastinum", "Enlarged CM") for l in CHEXPERT_LABELS]
 
 MODELS = [
-    {"name": "vanilla_clip_not_trained",  "model_type": "vanilla_clip",  "checkpoint": None},
-    # {"name": "biomedclip",    "model_type": "biomedclip",    "checkpoint": None},
-    {"name": "cxrclip_r50_m",   "model_type": "cxrclip", "checkpoint": "r50_m.pt"},
+    {"name": "vanilla_clip",  "model_type": "vanilla_clip",  "checkpoint": None},
+    {"name": "biomedclip",    "model_type": "biomedclip",    "checkpoint": None},
+    # {"name": "cxrclip_r50_m",   "model_type": "cxrclip", "checkpoint": "r50_m.pt"},
     # {"name": "cxrclip_r50_mc",  "model_type": "cxrclip", "checkpoint": "r50_mc.pt"},
     # {"name": "cxrclip_r50_mcc", "model_type": "cxrclip", "checkpoint": "r50_mcc.pt"},
-    {"name": "cxrclip_swint_m",   "model_type": "cxrclip", "checkpoint": "swint_m.pt"},
+    {"name": "cxr-clip",   "model_type": "cxrclip", "checkpoint": "swint_m.pt"},
     # {"name": "cxrclip_swint_mc",  "model_type": "cxrclip", "checkpoint": "swint_mc.pt"},
     # {"name": "cxrclip_swint_mcc", "model_type": "cxrclip", "checkpoint": "swint_mcc.pt"},
     # Fine-tuned models — add entries here after training:
@@ -218,7 +218,7 @@ MODELS = [
     # },   
                 
     {
-        "name": "labeldot_hnm_swint_hnm03",
+        "name": "ours",
         "model_type": "cxrclip_finetune",
         "checkpoint": None,
         "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
@@ -818,35 +818,153 @@ def make_parallel_coordinates_plot(macro_summary: pd.DataFrame, plots_dir: Path)
     )
 
     plt.tight_layout()
-    path = plots_dir / "parallel_coordinates.png"
-    fig.savefig(path, dpi=180, bbox_inches="tight")
+    base = plots_dir / "parallel_coordinates"
+    fig.savefig(str(base) + ".pdf", bbox_inches="tight")
+    fig.savefig(str(base) + ".png", dpi=180, bbox_inches="tight")
     plt.close(fig)
-    log.info(f"Saved → {path}")
+    log.info(f"Saved → {base}.pdf / .png")
+
+
+# ── Parallel coordinates — vertical layout (single-column paper) ──────────────
+
+def make_parallel_coordinates_plot_vertical(macro_summary: pd.DataFrame, plots_dir: Path):
+    """
+    Vertical parallel coordinates — metrics stacked top-to-bottom, model lines
+    run horizontally across the page. Fits in a single column (~3.5 in wide).
+    Saves both .pdf and .png.
+    """
+    import math
+
+    plots_dir.mkdir(parents=True, exist_ok=True)
+
+    AXES_DEF = [
+        ("single_P@5",          "Single P@5",     False),
+        ("pair_P@5",            "Pair P@5",       False),
+        ("negative_P@5",        "Negation P@5",   False),
+        ("negative_robust_P@5", "Neg-Rob. P@5",   False),
+        ("negative_HNRR@5",     "HNRR@5 (↓)",     True),
+    ]
+    avail = [(col, lbl, inv) for col, lbl, inv in AXES_DEF if col in macro_summary.columns]
+    if len(avail) < 2:
+        log.warning("Vertical parallel coordinates: not enough metrics available, skipping.")
+        return
+
+    model_names = macro_summary["model"].tolist()
+    n_models    = len(model_names)
+    n_ax        = len(avail)
+
+    raw = {col: macro_summary[col].values.astype(float) for col, _, _ in avail}
+
+    def _norm(vals: np.ndarray, inv: bool) -> np.ndarray:
+        lo, hi = np.nanmin(vals), np.nanmax(vals)
+        if hi == lo:
+            return np.full_like(vals, 0.5)
+        n = (vals - lo) / (hi - lo)
+        return 1.0 - n if inv else n
+
+    normed = {col: _norm(raw[col], inv) for col, _, inv in avail}
+    colors = [plt.cm.tab10(i % 10) for i in range(n_models)]
+    y_pos  = list(range(n_ax))
+
+    plt.rcParams.update({"font.family": "serif", "font.size": 9})
+    fig, ax = plt.subplots(figsize=(3.8, 5.8))
+    fig.subplots_adjust(left=0.28, right=0.97, top=0.88, bottom=0.20)
+
+    # y=0 at top, y=n_ax-1 at bottom (inverted)
+    ax.set_xlim(-0.05, 1.05)
+    ax.set_ylim(n_ax - 0.5, -0.5)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.set_xticks([])
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels([lbl for _, lbl, _ in avail],
+                       fontsize=8.5, fontweight="bold", ha="right")
+    ax.tick_params(axis="y", length=0, pad=5)
+
+    _val_kw = dict(fontsize=6.5, color="#555555",
+                   bbox=dict(facecolor="white", edgecolor="#cccccc",
+                             pad=1.5, boxstyle="round,pad=0.15"),
+                   zorder=5)
+
+    for i, (col, lbl, inv) in enumerate(avail):
+        # Horizontal axis line
+        ax.axhline(y=i, color="#aaaaaa", linewidth=1.0, zorder=1)
+        # Tick nubs at x=0 (worst) and x=1 (best)
+        ax.plot([0, 0], [i - 0.07, i + 0.07], color="#999999", linewidth=0.8, zorder=2)
+        ax.plot([1, 1], [i - 0.07, i + 0.07], color="#999999", linewidth=0.8, zorder=2)
+
+        lo, hi = float(np.nanmin(raw[col])), float(np.nanmax(raw[col]))
+        worst = hi if inv else lo   # value at x=0 end
+        best  = lo if inv else hi   # value at x=1 end
+        # Value labels sit just below each axis line (i+0.24 = visually lower)
+        ax.text(0.0, i + 0.24, f"{worst:.3f}", ha="center", va="top", **_val_kw)
+        ax.text(1.0, i + 0.24, f"{best:.3f}",  ha="center", va="top", **_val_kw)
+        # Direction hint above the line
+        # if inv:
+        #     ax.text(0.02, i - 0.17, "← better", ha="left",  va="bottom",
+        #             fontsize=5.5, color="#888888", style="italic")
+        # else:
+        ax.text(0.98, i - 0.17, "better →", ha="right", va="bottom",
+                fontsize=5.5, color="#888888", style="italic")
+
+    # One line per model
+    for m_idx, mname in enumerate(model_names):
+        xs = [float(normed[col][m_idx]) for col, _, _ in avail]
+        if any(math.isnan(x) for x in xs):
+            continue
+        ax.plot(xs, y_pos, marker="o", markersize=5, linewidth=1.8,
+                color=colors[m_idx], alpha=0.85, label=mname, zorder=3)
+
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.12),
+        ncol=min(n_models, 3), fontsize=7.5, frameon=True,
+        fancybox=False, edgecolor="#cccccc",
+    )
+    ax.set_title(
+        "Model comparison — parallel coordinates\n",
+        fontsize=8.5, pad=8,
+    )
+
+    plt.rcParams.update({"font.family": "sans-serif"})
+    base = plots_dir / "parallel_coordinates_vertical"
+    fig.savefig(str(base) + ".pdf", bbox_inches="tight")
+    fig.savefig(str(base) + ".png", dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    log.info(f"Saved → {base}.pdf / .png")
 
 
 # ── Radar / spider chart ──────────────────────────────────────────────────────
 
 def make_radar_plot(macro_summary: pd.DataFrame, plots_dir: Path):
     """
-    Radar chart (top) + compact value table (bottom).
-    Fits in a single column of a two-column paper.
+    Saves two versions:
+      radar.pdf / .png            — radar + summary table (main paper figure)
+      radar_standalone.pdf / .png — compact radar only (column inset)
     """
     import math
 
     plots_dir.mkdir(parents=True, exist_ok=True)
 
     SPOKES = [
-        ("single_P@5",          "Single\nP@5",     False),
-        ("pair_P@5",            "Pair\nP@5",       False),
-        ("negative_P@5",        "Neg.\nP@5",       False),
-        ("negative_robust_P@5", "Neg.-Rob.\nP@5",  False),
-        ("negative_HNRR@5",     "HNRR@5\n(↓)",     True),
+        ("single_P@5",          "Single\nP@5",    False),
+        ("pair_P@5",            "Pair\nP@5",      False),
+        ("negative_P@5",        "Neg.\nP@5",      False),
+        ("negative_robust_P@5", "Neg.-Rob.\nP@5", False),
+        ("negative_HNRR@5",     "HNRR@5\n(↓)",    True),
     ]
     DISP = {
         "vanilla_clip_not_trained": "CLIP",
         "cxrclip_r50_mc":           "CXR-CLIP",
         "labeldot_hnm_swint_hnm03": "Ours",
     }
+    # Accessible, print-friendly palette — stable per model name
+    _FIXED = {
+        "vanilla_clip_not_trained": "#4878d0",   # blue
+        "cxrclip_r50_mc":           "#ee854a",   # orange
+        "labeldot_hnm_swint_hnm03": "#6acc65",   # green
+    }
+    _EXTRA = ["#d65f5f", "#956cb4", "#857c77", "#8c613c"]
 
     avail = [(c, lbl, inv) for c, lbl, inv in SPOKES if c in macro_summary.columns]
     N = len(avail)
@@ -856,110 +974,133 @@ def make_radar_plot(macro_summary: pd.DataFrame, plots_dir: Path):
     model_names = macro_summary["model"].tolist()
     n_models    = len(model_names)
 
-    raw = {c: macro_summary[c].values.astype(float) for c, _, _ in avail}
-    lo  = {c: float(np.nanmin(v)) for c, v in raw.items()}
-    hi  = {c: float(np.nanmax(v)) for c, v in raw.items()}
+    raw    = {c: macro_summary[c].values.astype(float) for c, _, _ in avail}
+    lo_raw = {c: float(np.nanmin(v)) for c, v in raw.items()}
+    hi_raw = {c: float(np.nanmax(v)) for c, v in raw.items()}
 
     def _norm(col, inv):
-        span = hi[col] - lo[col]
-        n = np.zeros(n_models) if span == 0 else (raw[col] - lo[col]) / span
+        span = hi_raw[col] - lo_raw[col]
+        n = np.zeros(n_models) if span == 0 else (raw[col] - lo_raw[col]) / span
         return 1.0 - n if inv else n
 
     normed = {c: _norm(c, inv) for c, _, inv in avail}
+    angles = [2 * math.pi * i / N for i in range(N)]
+    ang_cl = angles + [angles[0]]
 
-    angles        = [2 * math.pi * i / N for i in range(N)]
-    angles_closed = angles + [angles[0]]
-    colors        = [plt.cm.tab10(i % 10) for i in range(n_models)]
-
-    plt.rcParams.update({"font.family": "serif", "font.size": 9})
-
-    fig = plt.figure(figsize=(5.5, 7.0))
-
-    ax = fig.add_axes([0.10, 0.32, 0.80, 0.60], polar=True)
-    ax.set_theta_offset(math.pi / 2)
-    ax.set_theta_direction(-1)
-
-    ax.set_ylim(0, 1)
-    ax.set_yticks([0.25, 0.5, 0.75, 1.0])
-    ax.set_yticklabels([])
-    ax.yaxis.grid(True, color="#cccccc", linestyle="dotted", linewidth=0.6)
-    ax.spines["polar"].set_visible(False)
-    ring_a = np.linspace(0, 2 * math.pi, 300)
-    ax.plot(ring_a, np.ones(300), color="#999999", linewidth=0.9, linestyle="--", zorder=1)
-
-    ax.set_xticks(angles)
-    ax.set_xticklabels([])
-    for a in angles:
-        ax.plot([a, a], [0, 1], color="#cccccc", linewidth=0.7, zorder=1)
-
-    for m_idx, mname in enumerate(model_names):
-        vals = [float(normed[c][m_idx]) for c, _, _ in avail]
-        if any(np.isnan(v) for v in vals):
-            continue
-        vc = vals + [vals[0]]
-        ax.fill(angles_closed, vc, color=colors[m_idx], alpha=0.18, zorder=2)
-        ax.plot(angles_closed, vc, color=colors[m_idx], linewidth=1.8,
-                zorder=3, label=DISP.get(mname, mname))
-        ax.scatter(angles, vals, color=colors[m_idx], s=32, zorder=4, clip_on=False)
+    _extra_it = iter(_EXTRA)
+    colors = [_FIXED.get(m) or next(_extra_it, "#777777") for m in model_names]
 
     def _ha(a):
         s = math.sin(a)
-        if abs(s) < 0.18: return "center"
-        return "left" if s > 0 else "right"
+        return "center" if abs(s) < 0.18 else ("left" if s > 0 else "right")
 
     def _va(a):
         c = math.cos(a)
-        if c >  0.55: return "bottom"
-        if c < -0.55: return "top"
-        return "center"
+        return "bottom" if c > 0.55 else ("top" if c < -0.55 else "center")
 
-    for i, (_, lbl, _) in enumerate(avail):
-        a = angles[i]
-        ax.text(a, 1.20, lbl, ha=_ha(a), va=_va(a),
-                fontsize=8.5, fontweight="bold", transform=ax.transData)
+    # ── shared helpers ─────────────────────────────────────────────────────────
+    def _setup_polar(ax):
+        ax.set_theta_offset(math.pi / 2)
+        ax.set_theta_direction(-1)
+        ax.set_ylim(0, 1)
+        ax.set_yticks([0.25, 0.5, 0.75, 1.0])
+        ax.set_yticklabels([])
+        ax.yaxis.grid(True, color="#e0e0e0", linestyle="dotted", linewidth=0.6)
+        ax.spines["polar"].set_visible(False)
+        ring_a = np.linspace(0, 2 * math.pi, 300)
+        ax.plot(ring_a, np.ones(300), color="#bbbbbb", linewidth=0.8,
+                linestyle="--", zorder=1)
+        ax.set_xticks(angles)
+        ax.set_xticklabels([])
+        for a in angles:
+            ax.plot([a, a], [0, 1], color="#d8d8d8", linewidth=0.7, zorder=1)
 
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, 1.28),
-              ncol=n_models, fontsize=8, frameon=True,
-              fancybox=False, edgecolor="#cccccc",
-              handlelength=1.4, columnspacing=0.9)
+    def _draw_models(ax, legend=True):
+        for m_idx, mname in enumerate(model_names):
+            vals = [float(normed[c][m_idx]) for c, _, _ in avail]
+            if any(math.isnan(v) for v in vals):
+                continue
+            vc = vals + [vals[0]]
+            ax.fill(ang_cl, vc, color=colors[m_idx], alpha=0.13, zorder=2)
+            ax.plot(ang_cl, vc, color=colors[m_idx], linewidth=2.0, zorder=3,
+                    label=DISP.get(mname, mname) if legend else None)
+            ax.scatter(angles, vals, color=colors[m_idx], s=36, zorder=4,
+                       clip_on=False, edgecolors="white", linewidths=0.6)
 
-    ax_t = fig.add_axes([0.02, 0.02, 0.96, 0.27])
-    ax_t.axis("off")
+    def _draw_spoke_labels(ax, r=1.22, fs=8.5):
+        for i, (_, lbl, _) in enumerate(avail):
+            a = angles[i]
+            ax.text(a, r, lbl, ha=_ha(a), va=_va(a),
+                    fontsize=fs, fontweight="bold", transform=ax.transData)
 
+    # ── table data (shared between both versions) ──────────────────────────────
+    HDR_BG    = "#2c3e50"
+    HDR_FG    = "white"
+    BEST_BG   = "#c6efce"
     col_hdrs  = [lbl.replace("\n", " ") for _, lbl, _ in avail]
     row_lbls  = [DISP.get(m, m) for m in model_names]
     cell_text = [[f"{raw[c][m_idx]:.3f}" for c, _, _ in avail]
                  for m_idx in range(n_models)]
 
-    best_cell_color = "#c6efce"
-    cell_colors = [["white"] * N for _ in range(n_models)]
+    cell_colors_tbl = [["white"] * N for _ in range(n_models)]
     for col_idx, (c, _, inv) in enumerate(avail):
-        vals_col = [raw[c][m] for m in range(n_models)]
-        best = int(np.argmin(vals_col) if inv else np.argmax(vals_col))
-        cell_colors[best][col_idx] = best_cell_color
+        valid = [(m, raw[c][m]) for m in range(n_models) if not math.isnan(raw[c][m])]
+        if not valid:
+            continue
+        best_m = min(valid, key=lambda x: x[1])[0] if inv else max(valid, key=lambda x: x[1])[0]
+        cell_colors_tbl[best_m][col_idx] = BEST_BG
 
-    tbl = ax_t.table(
-        cellText=cell_text,
-        rowLabels=row_lbls,
-        colLabels=col_hdrs,
-        cellLoc="center",
-        rowLoc="right",
-        loc="center",
-        cellColours=cell_colors,
-    )
-    tbl.auto_set_font_size(False)
-    tbl.set_fontsize(8)
-    tbl.scale(1.0, 1.55)
+    def _draw_table(ax_t):
+        ax_t.axis("off")
+        tbl = ax_t.table(
+            cellText=cell_text,
+            rowLabels=row_lbls,
+            colLabels=col_hdrs,
+            cellLoc="center",
+            rowLoc="right",
+            loc="center",
+            cellColours=cell_colors_tbl,
+        )
+        tbl.auto_set_font_size(False)
+        tbl.set_fontsize(8)
+        tbl.scale(1.0, 1.55)
+        for (row, col), cell in tbl.get_celld().items():
+            cell.set_linewidth(0.5)
+            if col == -1 and row > 0:                       # row label
+                m_idx = row - 1
+                cell.set_text_props(color=colors[m_idx], fontweight="bold")
+                cell.set_facecolor("#f8f8f8")
+                cell.set_edgecolor("#cccccc")
+            elif row == 0:                                  # column header
+                cell.set_text_props(color=HDR_FG, fontweight="bold")
+                cell.set_facecolor(HDR_BG)
+                cell.set_edgecolor("#444444")
+            if row > 0 and col >= 0:                        # bold best value
+                m_idx  = row - 1
+                c_name = avail[col][0]
+                inv_c  = avail[col][2]
+                valid  = [raw[c_name][m] for m in range(n_models)
+                          if not math.isnan(raw[c_name][m])]
+                if valid:
+                    best_val = min(valid) if inv_c else max(valid)
+                    if not math.isnan(raw[c_name][m_idx]) and raw[c_name][m_idx] == best_val:
+                        cell.set_text_props(fontweight="bold")
 
-    for (row, col), cell in tbl.get_celld().items():
-        cell.set_linewidth(0.5)
-        if col == -1 and row > 0:
-            m_idx = row - 1
-            cell.set_text_props(color=colors[m_idx], fontweight="bold")
-            cell.set_edgecolor("#aaaaaa")
-        elif row == 0:
-            cell.set_text_props(fontweight="bold")
-            cell.set_facecolor("#f0f0f0")
+    plt.rcParams.update({"font.family": "serif", "font.size": 9})
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # Version 1: radar + table
+    # ════════════════════════════════════════════════════════════════════════════
+    fig = plt.figure(figsize=(5.5, 7.0))
+    ax  = fig.add_axes([0.10, 0.33, 0.80, 0.59], polar=True)
+    _setup_polar(ax)
+    _draw_models(ax, legend=True)
+    _draw_spoke_labels(ax, r=1.22, fs=8.5)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, 1.30),
+              ncol=n_models, fontsize=8.5, frameon=True,
+              fancybox=False, edgecolor="#cccccc",
+              handlelength=1.6, columnspacing=1.0)
+    _draw_table(fig.add_axes([0.02, 0.02, 0.96, 0.27]))
 
     plt.rcParams.update({"font.family": "sans-serif"})
     base = plots_dir / "radar"
@@ -967,6 +1108,27 @@ def make_radar_plot(macro_summary: pd.DataFrame, plots_dir: Path):
     fig.savefig(str(base) + ".png", dpi=300, bbox_inches="tight")
     plt.close(fig)
     log.info(f"Saved → {base}.pdf / .png")
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # Version 2: standalone radar (compact, no table — for column inset)
+    # ════════════════════════════════════════════════════════════════════════════
+    plt.rcParams.update({"font.family": "serif", "font.size": 9})
+    fig2 = plt.figure(figsize=(3.8, 4.2))
+    ax2  = fig2.add_axes([0.06, 0.13, 0.88, 0.80], polar=True)
+    _setup_polar(ax2)
+    _draw_models(ax2, legend=True)
+    _draw_spoke_labels(ax2, r=1.25, fs=7.5)
+    ax2.legend(loc="upper center", bbox_to_anchor=(0.5, -0.08),
+               ncol=n_models, fontsize=7.5, frameon=True,
+               fancybox=False, edgecolor="#cccccc",
+               handlelength=1.4, columnspacing=0.9)
+
+    plt.rcParams.update({"font.family": "sans-serif"})
+    base2 = plots_dir / "radar_standalone"
+    fig2.savefig(str(base2) + ".pdf", bbox_inches="tight")
+    fig2.savefig(str(base2) + ".png", dpi=300, bbox_inches="tight")
+    plt.close(fig2)
+    log.info(f"Saved → {base2}.pdf / .png")
 
 
 # ── Rankings ──────────────────────────────────────────────────────────────────
@@ -1000,8 +1162,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("--paired_dir", required=True)
-    parser.add_argument("--csv", required=False,default="cxr_data/mimic_cxr_official_test.csv",)
+    parser.add_argument("--paired_dir", default=None,
+                        help="Directory with paired image/text data (required unless --plots_only)")
+    parser.add_argument("--csv", default="cxr_data/mimic_cxr_official_test.csv",)
     parser.add_argument("--max_samples", type=int, default=None,
                         help="Limit number of dataset items to evaluate(default: all, which is 5159 for cxr dataset)")
     parser.add_argument("--output_dir", required=True,
@@ -1011,6 +1174,8 @@ def main():
                         help="Which query types to evaluate (passed to eval_model.py). Default: all")
     parser.add_argument("--skip_existing", action="store_true",
                         help="Skip models whose results CSV already exists")
+    parser.add_argument("--plots_only", action="store_true",
+                        help="Skip evaluations; load existing result CSVs and regenerate all plots")
     parser.add_argument("--batch_size", type=int, default=128,
                         help="Batch size for image and text encoding (default: 128)")
     parser.add_argument("--wandb-project", default=None,
@@ -1023,6 +1188,67 @@ def main():
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    if not args.plots_only and not args.paired_dir:
+        parser.error("--paired_dir is required unless --plots_only is set")
+
+    # ── plots_only: load existing CSVs, skip evaluations ─────────────────────
+    if args.plots_only:
+        log.info("--plots_only: loading existing result CSVs from %s", output_dir)
+        all_results = {}
+        for model in MODELS:
+            out_path     = output_dir / results_path(model).name
+            out_path_rob = output_dir / results_robust_path(model).name
+            if not out_path.exists():
+                log.info("  no CSV for %s, skipping", model["name"])
+                continue
+            df_main = pd.read_csv(out_path)
+            frames  = [df_main]
+            if out_path_rob.exists():
+                df_rob = pd.read_csv(out_path_rob)
+                df_rob.loc[df_rob["type"] == "negative", "type"] = "negative_robust"
+                frames.append(df_rob)
+            all_results[model["name"]] = pd.concat(frames, ignore_index=True)
+            log.info("  loaded %s", model["name"])
+        # also pick up any radar-specific CSVs not in the active MODELS list
+        RADAR_MODELS_STEMS = {
+            "vanilla_clip_not_trained": "results_vanilla_clip_not_trained",
+            "cxrclip_swint_m":          "results_cxrclip_swint_m",
+            "labeldot_hnm_swint_hnm03": "results_labeldot_hnm_swint_hnm03",
+        }
+        for mname, stem in RADAR_MODELS_STEMS.items():
+            if mname in all_results:
+                continue
+            p = output_dir / f"{stem}.csv"
+            if not p.exists():
+                continue
+            dfs = [pd.read_csv(p)]
+            p_rob = output_dir / f"{stem}_robust.csv"
+            if p_rob.exists():
+                dr = pd.read_csv(p_rob)
+                dr.loc[dr["type"] == "negative", "type"] = "negative_robust"
+                dfs.append(dr)
+            all_results[mname] = pd.concat(dfs, ignore_index=True)
+            log.info("  loaded radar model %s", mname)
+        if not all_results:
+            log.error("No result CSVs found in %s", output_dir)
+            return
+        macro_summary = build_macro_summary(all_results)
+        plots_dir = output_dir / "plots"
+        make_plots(all_results, macro_summary, plots_dir)
+        make_table_plots(macro_summary, plots_dir)
+        make_parallel_coordinates_plot(macro_summary, plots_dir)
+        make_parallel_coordinates_plot_vertical(macro_summary, plots_dir)
+        # radar from the 3 paper models specifically
+        radar_results = {m: df for m, df in all_results.items()
+                         if m in RADAR_MODELS_STEMS}
+        make_radar_plot(
+            build_macro_summary(radar_results) if len(radar_results) >= 2 else macro_summary,
+            plots_dir,
+        )
+        build_rankings(macro_summary, output_dir)
+        log.info("plots_only done.")
+        return
 
     # ── Run evaluations ───────────────────────────────────────────────────────
     # Two passes per model:
@@ -1144,12 +1370,13 @@ def main():
     make_plots(all_results, macro_summary, plots_dir)
     make_table_plots(macro_summary, plots_dir)
     make_parallel_coordinates_plot(macro_summary, plots_dir)
+    make_parallel_coordinates_plot_vertical(macro_summary, plots_dir)
 
     # Radar always uses these 3 specific models; load from individual CSVs
     # so it works even when the MODELS list is different from a prior run.
     RADAR_MODELS = {
         "vanilla_clip_not_trained": "results_vanilla_clip_not_trained",
-        "cxrclip_r50_mc":           "results_cxrclip_r50_mc",
+        "cxrclip_swint_m":          "results_cxrclip_swint_m",
         "labeldot_hnm_swint_hnm03": "results_labeldot_hnm_swint_hnm03",
     }
     radar_results = {}
