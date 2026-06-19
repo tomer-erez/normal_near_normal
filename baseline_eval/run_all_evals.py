@@ -224,6 +224,32 @@ MODELS = [
         "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
         "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_hnm03/final_merged.pt",
     },   
+    
+        {
+        "name": "labeldot_hnm_swint_hnm01",
+        "model_type": "cxrclip_finetune",
+        "checkpoint": None,
+        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
+        "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_hnm01/final_merged.pt",
+    },   
+        
+        
+            {
+        "name": "labeldot_hnm_swint_M_hnm01",
+        "model_type": "cxrclip_finetune",
+        "checkpoint": None,
+        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_m.pt",
+        "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_M_hnm01/final_merged.pt",
+    },   
+            
+                    
+            {
+        "name": "labeldot_hnm_swint_M_hnm09",
+        "model_type": "cxrclip_finetune",
+        "checkpoint": None,
+        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_m.pt",
+        "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_M_hnm09/final_merged.pt",
+    },  
  ]
 
 KS = [1, 3, 5]
