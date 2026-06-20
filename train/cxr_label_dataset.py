@@ -57,6 +57,8 @@ class CXRLabelDataset(Dataset):
         max_samples: int | None = None,
         seed: int = 42,
     ):
+        _ALIASES = {"single_only": "single", "pair_only": "pair", "neg_only": "negative"}
+        caption_mode = _ALIASES.get(caption_mode, caption_mode)
         assert caption_mode in ("single", "pair", "both", "negative", "all")
         assert nan_mode in ("negative", "ignore")
         self.transform = transform

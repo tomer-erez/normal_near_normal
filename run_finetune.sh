@@ -8,15 +8,15 @@
 #
 # Loss: label_dot clip — soft multi-positive labels, nan=ignore.
 
-name="labeldot_hnm_swint_M_hnm09"
+name="label_dot_hnm0"
 set -e
 cd "$(dirname "$0")"
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate thesis_clip
 mkdir -p logs experiments/$name
 tmux new-session -d -s $name "
-    CUDA_VISIBLE_DEVICES=3,4 torchrun --nproc_per_node=2 --master_port=29505 train_lora.py \
-        --cxrclip-finetune ./valid_pretrained_models_to_try/swint_m.pt \
+    CUDA_VISIBLE_DEVICES=0,5 torchrun --nproc_per_node=2 --master_port=29503 train_lora.py \
+        --cxrclip-finetune ./valid_pretrained_models_to_try/swint_mc.pt \
         --precision bf16 \
         --lr 1e-4 \
         --min-lr 1e-8 \
@@ -28,7 +28,7 @@ tmux new-session -d -s $name "
         --loss clip \
         --caption-mode all \
         --match-mode label_dot \
-        --hnm-weight 0.9 \
+        --hnm-weight 0.3 \
         --lora-r 12 \
         --lora-alpha 12 \
         --lora-dropout 0.05 \

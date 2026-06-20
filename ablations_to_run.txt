@@ -1,0 +1,44 @@
+here is a list of ablation experiments to run and report
+i would like to finish those before the first submission and report those in the paper:
+
+1. Fine tuning swint cxr-clip vs fine tuning vanilla clip:
+i have it, no need for extra training, it is under:
+eval_outputs/ablations_ft_cxrclip_vs_ft_vanilla
+the models are:
+
+    {
+        "name": "fine_tuning_vanilla_clip",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/labeldot_hnm_vanilla/final_merged.pt",
+    },  
+
+    vs
+
+        {
+        "name": "fine_tunning_cxr_clip", #ours
+        "model_type": "cxrclip_finetune",
+        "checkpoint": None,
+        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
+        "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_hnm03/final_merged.pt",
+    },  
+
+
+<< DONE >>
+
+
+2. different loss types: clip loss vs clip+attract vs clip+attract+HNM
+i think the three combinations to run are:
+all fine tuned
+2.1. clip loss: match-mode = standard, hnm_weight 0.0 , just launched name: standard_hnm0
+2.2. clip + attract: match-mode = label_dot, hnm_wieght 0.0, just launched name: label_dot_hnm0
+2.3. already done, its the experiments/labeldot_hnm_swint_hnm03 run
+
+
+3. training captions splits: single, pair, negation 50-25-25 vs other combinations affect on evals , for example show the 100-0-0 result on single vs pair vs negative, and other interesting combinations
+compare to:
+1. single only : 100-0-0
+2. pair only : 0-100-0
+3. negative only: 0-0-100

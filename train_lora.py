@@ -134,7 +134,7 @@ def parse_args():
     p.add_argument("--val-split", type=float, default=0.1,
                    help="Fraction of training data held out for validation when --val-csv is not given. "
                         "Set to 0 to disable validation entirely.")
-    p.add_argument("--caption-mode", default="all", choices=["single", "pair", "both", "negative", "all"])
+    p.add_argument("--caption-mode", default="all", choices=["single", "pair", "both", "negative", "all", "single_only", "pair_only", "neg_only"])
     p.add_argument("--nan-mode", default="ignore", choices=["negative", "ignore"],
                    help="How to encode NaN (not-mentioned) labels. "
                         "'ignore' (default): only CSV 0 counts as absent (-1.0); NaN is ignored (0.0). "

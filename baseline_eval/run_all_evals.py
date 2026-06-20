@@ -68,12 +68,12 @@ LABEL_TO_IDX = {col: i for i, col in enumerate(LABEL_COLS)}
 SHORT_LABELS = [l.replace("Enlarged Cardiomediastinum", "Enlarged CM") for l in CHEXPERT_LABELS]
 
 MODELS = [
-    {"name": "vanilla_clip",  "model_type": "vanilla_clip",  "checkpoint": None},
-    {"name": "biomedclip",    "model_type": "biomedclip",    "checkpoint": None},
+    # {"name": "vanilla_clip",  "model_type": "vanilla_clip",  "checkpoint": None},
+    # {"name": "biomedclip",    "model_type": "biomedclip",    "checkpoint": None},
     # {"name": "cxrclip_r50_m",   "model_type": "cxrclip", "checkpoint": "r50_m.pt"},
     # {"name": "cxrclip_r50_mc",  "model_type": "cxrclip", "checkpoint": "r50_mc.pt"},
     # {"name": "cxrclip_r50_mcc", "model_type": "cxrclip", "checkpoint": "r50_mcc.pt"},
-    {"name": "cxr-clip",   "model_type": "cxrclip", "checkpoint": "swint_m.pt"},
+    # {"name": "cxr-clip",   "model_type": "cxrclip", "checkpoint": "swint_m.pt"},
     # {"name": "cxrclip_swint_mc",  "model_type": "cxrclip", "checkpoint": "swint_mc.pt"},
     # {"name": "cxrclip_swint_mcc", "model_type": "cxrclip", "checkpoint": "swint_mcc.pt"},
     # Fine-tuned models — add entries here after training:
@@ -191,14 +191,14 @@ MODELS = [
     # },   
     
     
-    # {
-    #     "name": "labeldot_hnm005_vanilla",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/labeldot_hnm_vanilla/final_merged.pt",
-    # },   
+    {
+        "name": "fine_tuning_vanilla_clip",
+        "model_type": "finetuned",
+        "checkpoint": None,
+        "finetuned_base_model": "ViT-B-32",
+        "finetuned_pretrained": "",
+        "finetuned_checkpoint": "experiments/labeldot_hnm_vanilla/final_merged.pt",
+    },   
                 
     # {
     #     "name": "labeldot_hnm005_swint",
@@ -218,38 +218,38 @@ MODELS = [
     # },   
                 
     {
-        "name": "ours",
+        "name": "fine_tunning_cxr_clip", #ours
         "model_type": "cxrclip_finetune",
         "checkpoint": None,
         "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
         "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_hnm03/final_merged.pt",
     },   
     
-        {
-        "name": "labeldot_hnm_swint_hnm01",
-        "model_type": "cxrclip_finetune",
-        "checkpoint": None,
-        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-        "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_hnm01/final_merged.pt",
-    },   
+    #     {
+    #     "name": "labeldot_hnm_swint_hnm01",
+    #     "model_type": "cxrclip_finetune",
+    #     "checkpoint": None,
+    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
+    #     "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_hnm01/final_merged.pt",
+    # },   
         
         
-            {
-        "name": "labeldot_hnm_swint_M_hnm01",
-        "model_type": "cxrclip_finetune",
-        "checkpoint": None,
-        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_m.pt",
-        "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_M_hnm01/final_merged.pt",
-    },   
+    #         {
+    #     "name": "labeldot_hnm_swint_M_hnm01",
+    #     "model_type": "cxrclip_finetune",
+    #     "checkpoint": None,
+    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_m.pt",
+    #     "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_M_hnm01/final_merged.pt",
+    # },   
             
                     
-            {
-        "name": "labeldot_hnm_swint_M_hnm09",
-        "model_type": "cxrclip_finetune",
-        "checkpoint": None,
-        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_m.pt",
-        "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_M_hnm09/final_merged.pt",
-    },  
+    #         {
+    #     "name": "labeldot_hnm_swint_M_hnm09",
+    #     "model_type": "cxrclip_finetune",
+    #     "checkpoint": None,
+    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_m.pt",
+    #     "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_M_hnm09/final_merged.pt",
+    # },  
  ]
 
 KS = [1, 3, 5]
