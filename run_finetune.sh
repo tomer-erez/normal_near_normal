@@ -8,14 +8,14 @@
 #
 # Loss: label_dot clip — soft multi-positive labels, nan=ignore.
 
-name="label_dot_hnm0"
+name="single_only"
 set -e
 cd "$(dirname "$0")"
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate thesis_clip
 mkdir -p logs experiments/$name
 tmux new-session -d -s $name "
-    CUDA_VISIBLE_DEVICES=0,5 torchrun --nproc_per_node=2 --master_port=29503 train_lora.py \
+    CUDA_VISIBLE_DEVICES=3,4 torchrun --nproc_per_node=2 --master_port=29509 train_lora.py \
         --cxrclip-finetune ./valid_pretrained_models_to_try/swint_mc.pt \
         --precision bf16 \
         --lr 1e-4 \
@@ -26,7 +26,7 @@ tmux new-session -d -s $name "
         --patience 10 \
         --nan-mode ignore \
         --loss clip \
-        --caption-mode all \
+        --caption-mode single_only \
         --match-mode label_dot \
         --hnm-weight 0.3 \
         --lora-r 12 \

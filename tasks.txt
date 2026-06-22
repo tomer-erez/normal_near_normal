@@ -35,3 +35,57 @@ labeldot_nanmode_negative_from_swint: 1 windows (created Sat Jun 13 10:14:45 202
 (base) tomererez@floria:~/normal_near_normal$ 
 
 run the results of hnm and analyze
+
+
+
+
+
+notes from meeting with moshe 22.6:
+
+cut vertical spaces between legends and graphs
+like the space between the paralel coordinate plot and the legend below it
+
+ablations:
+table 9 add our model
+validate numbers of tables so it is consistent and no changes between our model
+
+check pair only model on the difficult pairs, from fig 6, those who are red and orange , are in extreme cases of very low
+if so then report it, 
+if not maybe lets train models without pair captions?
+
+
+like figure 1 where we work and cxr fails on composite queries but with actual ours vs theirs which images we retrieve vs them, like 3 examples
+cherry picking specific examples and make collage
+keep it small in the pdf
+
+move the f1 score to the supplemantarymaterial should be below the bibs and its legal
+
+precision and recall can be moved to the supplemantry
+
+add ablation of the hnm alphas i have the runs
+
+delete hnm margin from the latex
+
+read moshes comments in the tex i need to work on them
+
+figure 3 to supplementary
+
+403 queries?? i have it in hte tex somewhere
+
+need to write the conclusion and discussion
+
+no out of distribution analysis? maybe to round 2 submission we need to add
+
+elaborate less and dont itemize the models in section 6
+
+need to rethink on the way 6th chapter is built, we need less tables there
+need to have one big table that shows the results
+and some text interpration of the table
+textual description of what we are:
+better in single, way better in neg, better in robust, as good in pair...
+combine tables in 6
+less כותרות in chapter 6 less tables, and more textual analysis
+6.5 is רשימת מכולת need to use llm to formulate better
+
+
+in table 11, only use negatives asa negative in eval, not use missing as negaive

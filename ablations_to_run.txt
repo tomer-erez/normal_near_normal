@@ -40,5 +40,5 @@ all fine tuned
 3. training captions splits: single, pair, negation 50-25-25 vs other combinations affect on evals , for example show the 100-0-0 result on single vs pair vs negative, and other interesting combinations
 compare to:
 1. single only : 100-0-0
-2. pair only : 0-100-0
-3. negative only: 0-0-100
+2. pair only : 0-100-0 : currently running: experiments/pair_only
+3. neg only: 0-0-100
