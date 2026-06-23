@@ -8,7 +8,7 @@
 #
 # Loss: label_dot clip — soft multi-positive labels, nan=ignore.
 
-name="single_only"
+name="single75_neg25"
 set -e
 cd "$(dirname "$0")"
 source ~/miniconda3/etc/profile.d/conda.sh
@@ -26,7 +26,8 @@ tmux new-session -d -s $name "
         --patience 10 \
         --nan-mode ignore \
         --loss clip \
-        --caption-mode single_only \
+        --caption-mode all \
+        --caption-weights 0.75 0.0 0.25 \
         --match-mode label_dot \
         --hnm-weight 0.3 \
         --lora-r 12 \

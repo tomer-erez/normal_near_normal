@@ -1,6 +1,6 @@
 #!/bin/bash
 
-name="ablations_ft_cxrclip_vs_ft_vanilla"
+name="ablation_neg_missing_vs_none"
 set -e
 cd "$(dirname "$0")"
 source ~/miniconda3/etc/profile.d/conda.sh

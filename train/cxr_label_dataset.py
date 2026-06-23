@@ -53,6 +53,7 @@ class CXRLabelDataset(Dataset):
         transform,
         tokenizer,
         caption_mode: str = "both",
+        caption_weights: list[float] | None = None,
         nan_mode: str = "negative",
         max_samples: int | None = None,
         seed: int = 42,
@@ -65,6 +66,15 @@ class CXRLabelDataset(Dataset):
         self.tokenizer = tokenizer
         self.caption_mode = caption_mode
         self.nan_mode = nan_mode
+
+        # Normalise caption_weights → (p_single, p_pair, p_neg) summing to 1.0.
+        # Only used when caption_mode == "all".
+        if caption_weights is not None:
+            total = sum(caption_weights)
+            assert total > 0, "--caption-weights must not all be zero"
+            self.caption_probs = tuple(w / total for w in caption_weights)
+        else:
+            self.caption_probs = (0.50, 0.25, 0.25)  # default "all" split
         self.image_dir = Path(image_dir)
 
         df = pd.read_csv(
@@ -162,18 +172,20 @@ class CXRLabelDataset(Dataset):
                 caption = _build_caption(random.sample(pos_labels, 2))
             else:
                 caption = random.choice(pos_labels).lower()
-        else:  # all: 50% single / 25% pair / 25% negative; unavailable types fall back to single
-            r = random.random()
+        else:  # all: use self.caption_probs = (p_single, p_pair, p_neg)
+            p_single, p_pair, p_neg = self.caption_probs
             can_pair = len(pos_labels) >= 2
-            if r < 0.50:
+            can_neg  = bool(neg_labels)
+            r = random.random()
+            if r < p_single:
                 caption = random.choice(pos_labels).lower()
-            elif r < 0.75:
+            elif r < p_single + p_pair:
                 if can_pair:
                     caption = _build_caption(random.sample(pos_labels, 2))
                 else:
                     caption = random.choice(pos_labels).lower()  # pair impossible → single
             else:
-                if neg_labels:
+                if can_neg:
                     neg = random.choice(neg_labels)
                     caption = f"{random.choice(pos_labels).lower()} and no {neg.lower()}"
                 else:

@@ -49,9 +49,7 @@ ablations:
 table 9 add our model
 validate numbers of tables so it is consistent and no changes between our model
 
-check pair only model on the difficult pairs, from fig 6, those who are red and orange , are in extreme cases of very low
-if so then report it, 
-if not maybe lets train models without pair captions?
+check pair only model on the difficult pairs, from fig 6, those who are red and orange , are in extreme cases of very low if so then report it,  if not maybe lets train models without pair captions?
 
 
 like figure 1 where we work and cxr fails on composite queries but with actual ours vs theirs which images we retrieve vs them, like 3 examples
@@ -89,3 +87,8 @@ less כותרות in chapter 6 less tables, and more textual analysis
 
 
 in table 11, only use negatives asa negative in eval, not use missing as negaive
+
+naming: ours? losses attract? neg?
+
+ask ai about stuff
+

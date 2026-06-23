@@ -135,6 +135,11 @@ def parse_args():
                    help="Fraction of training data held out for validation when --val-csv is not given. "
                         "Set to 0 to disable validation entirely.")
     p.add_argument("--caption-mode", default="all", choices=["single", "pair", "both", "negative", "all", "single_only", "pair_only", "neg_only"])
+    p.add_argument("--caption-weights", type=float, nargs=3, default=None,
+                   metavar=("P_SINGLE", "P_PAIR", "P_NEG"),
+                   help="Sampling probabilities for single / pair / negation captions "
+                        "(unnormalized; only used when --caption-mode all). "
+                        "E.g. --caption-weights 0.75 0.0 0.25 for 75%% single + 25%% negation.")
     p.add_argument("--nan-mode", default="ignore", choices=["negative", "ignore"],
                    help="How to encode NaN (not-mentioned) labels. "
                         "'ignore' (default): only CSV 0 counts as absent (-1.0); NaN is ignored (0.0). "
@@ -643,6 +648,7 @@ def main():
         transform=preprocess_train,
         tokenizer=tokenizer,
         caption_mode=args.caption_mode,
+        caption_weights=args.caption_weights,
         nan_mode=args.nan_mode,
         max_samples=args.max_samples,
         seed=args.seed,

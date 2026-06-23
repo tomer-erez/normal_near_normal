@@ -379,6 +379,23 @@ def hnrr_at_k(hard_neg_mask: np.ndarray, k: int) -> float:
     return float(hard_neg_mask[:k].mean())
 
 
+def average_precision_at_k(relevant: np.ndarray, k: int, n_relevant: int) -> float:
+    """
+    AP@K: sum of P@j at each rank j (1-indexed) where a relevant image appears,
+    divided by total number of relevant images in the gallery.
+    Returns nan when there are no relevant images.
+    """
+    if n_relevant == 0:
+        return float("nan")
+    hits = 0
+    ap = 0.0
+    for j in range(min(k, len(relevant))):
+        if relevant[j]:
+            hits += 1
+            ap += hits / (j + 1)
+    return ap / n_relevant
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -433,8 +450,10 @@ def main():
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--max_samples", type=int, default=None,
                         help="Cap the gallery to the first N images (useful for quick smoke tests)")
-    # NaN (not-mentioned) labels are always treated as absent in evaluation:
-    # an image satisfies "no B" if B==0 (explicit negative) or B is not mentioned.
+    parser.add_argument("--strict-negation", action="store_true",
+                        help="Strict negation relevance: an image satisfies 'no B' only when "
+                             "B is explicitly ruled out (CSV 0). NaN (not mentioned) is NOT "
+                             "treated as absent. Default (lenient): NaN and 0 both satisfy 'no B'.")
     parser.add_argument("--neg-template", default=NEG_TEMPLATE_DEFAULT,
                         help="Format string for negative query text. "
                              "Placeholders: {pos} = positive label, {neg} = negated label. "
@@ -558,9 +577,12 @@ def main():
 
         if neg_indices:
             neg_cols = label_matrix[:, neg_indices]
-            # NaN (not mentioned) and CSV 0 (explicitly ruled out) both count as absent.
-            # CSV -1 (uncertain) does NOT count as absent.
-            neg_ok = ((neg_cols == 0.0) | np.isnan(neg_cols)).all(axis=1)
+            if args.strict_negation:
+                # Only CSV 0 (explicitly ruled out) satisfies "no B"; NaN is ignored.
+                neg_ok = (neg_cols == 0.0).all(axis=1)
+            else:
+                # Lenient: NaN (not mentioned) and CSV 0 both count as absent.
+                neg_ok = ((neg_cols == 0.0) | np.isnan(neg_cols)).all(axis=1)
             relevant_mask = pos_ok & neg_ok
         else:
             relevant_mask = pos_ok
@@ -586,13 +608,14 @@ def main():
         for k in ks:
             row[f"P@{k}"] = precision_at_k(retrieved_relevant, k, n_relevant)
             row[f"R@{k}"] = recall_at_k(retrieved_relevant, k, n_relevant)
+            row[f"AP@{k}"] = average_precision_at_k(retrieved_relevant, k, n_relevant)
             row[f"HNRR@{k}"] = hnrr_at_k(hard_neg_mask, k)
         rows.append(row)
 
     results_df = pd.DataFrame(rows)
 
     # ── Print results ─────────────────────────────────────────────────────────
-    metric_cols = [f"P@{k}" for k in ks] + [f"R@{k}" for k in ks]
+    metric_cols = [f"P@{k}" for k in ks] + [f"R@{k}" for k in ks] + [f"AP@{k}" for k in ks]
     print("\n" + "=" * 90)
     print(f"MODEL: {args.model_type}  |  query_mode: {args.query_mode}  |  gallery: {n_total:,} images")
     print("=" * 90)
@@ -610,9 +633,10 @@ def main():
         non_empty = subset[subset["n_relevant"] > 0]
         print(f"\n  Macro averages (queries with n_relevant > 0, n={len(non_empty)}):")
         for k in ks:
-            avg_p = non_empty[f"P@{k}"].mean()
-            avg_r = non_empty[f"R@{k}"].mean()
-            print(f"    P@{k}: {avg_p:.4f}   R@{k}: {avg_r:.4f}")
+            avg_p  = non_empty[f"P@{k}"].mean()
+            avg_r  = non_empty[f"R@{k}"].mean()
+            avg_ap = non_empty[f"AP@{k}"].mean()
+            print(f"    P@{k}: {avg_p:.4f}   R@{k}: {avg_r:.4f}   MAP@{k}: {avg_ap:.4f}")
 
     print("\n" + "=" * 90 + "\n")
 
