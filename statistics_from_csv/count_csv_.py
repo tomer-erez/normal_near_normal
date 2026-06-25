@@ -254,8 +254,9 @@ for i in range(len(chexpert_cols)):
         pairs.append((f"{li} & {lj}", count))
 
 pairs.sort(key=lambda x: x[1])
-pair_labels = [p[0] for p in pairs]
-pair_counts = [p[1] for p in pairs]
+pairs_thin = pairs[::2]          # keep 1 of every 2, sorted by frequency
+pair_labels = [p[0] for p in pairs_thin]
+pair_counts = [p[1] for p in pairs_thin]
 
 TIER_RED    = "#e74c3c"
 TIER_ORANGE = "#e67e22"
@@ -277,7 +278,7 @@ plt.rcParams.update({
     "axes.labelsize": 10,
 })
 
-fig, ax = plt.subplots(figsize=(7, 9))
+fig, ax = plt.subplots(figsize=(6, 6))
 
 y_pos = np.arange(len(pair_labels))
 bars = ax.barh(y_pos, pair_counts, color=colors, height=0.7, edgecolor="none")

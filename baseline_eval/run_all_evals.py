@@ -302,6 +302,13 @@ MODELS = [
         "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
         "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_hnm03/final_merged.pt",
     },  
+                                        {
+        "name": "single75_neg25", #ours
+        "model_type": "cxrclip_finetune",
+        "checkpoint": None,
+        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
+        "cxrclip_finetune_merged_checkpoint": "experiments/single75_neg25/final_merged.pt",
+    },  
  ]
 
 KS = [1, 3, 5]
@@ -833,12 +840,12 @@ def make_parallel_coordinates_plot(macro_summary: pd.DataFrame, plots_dir: Path)
 
     # (summary_column, display_label, invert_axis)
     AXES_DEF = [
-        ("single_AP@5",                "Single\nMAP@5",          False),
-        ("pair_AP@5",                  "Pair\nMAP@5",            False),
-        ("negative_AP@5",              "Neg.\nMAP@5",            False),
-        ("negative_strict_AP@5",       "Neg.\nStrict MAP@5",     False),
-        ("negative_robust_AP@5",       "Neg-Rob.\nMAP@5",        False),
-        ("negative_robust_strict_AP@5","Neg-Rob.\nStr. MAP@5",   False),
+        ("single_P@5",                "Single\nP@5",          False),
+        ("pair_P@5",                  "Pair\nP@5",            False),
+        ("negative_P@5",              "Neg.\nP@5",            False),
+        ("negative_strict_P@5",       "Neg.\nStrict P@5",     False),
+        ("negative_robust_P@5",       "Neg-Rob.\nP@5",        False),
+        ("negative_robust_strict_P@5","Neg-Rob.\nStr. P@5",   False),
         ("negative_HNRR@5",            "HNRR@5\n(lower=better)", True),
     ]
     avail = [(col, lbl, inv) for col, lbl, inv in AXES_DEF if col in macro_summary.columns]
@@ -937,12 +944,12 @@ def make_parallel_coordinates_plot_vertical(macro_summary: pd.DataFrame, plots_d
     plots_dir.mkdir(parents=True, exist_ok=True)
 
     AXES_DEF = [
-        ("single_AP@5",                "Single MAP@5",        False),
-        ("pair_AP@5",                  "Pair MAP@5",          False),
-        ("negative_AP@5",              "Neg. MAP@5",          False),
-        ("negative_strict_AP@5",       "Neg. Strict MAP@5",   False),
-        ("negative_robust_AP@5",       "Neg-Rob. MAP@5",      False),
-        ("negative_robust_strict_AP@5","Neg-Rob. Str. MAP@5", False),
+        ("single_P@5",                "Single P@5",        False),
+        ("pair_P@5",                  "Pair P@5",          False),
+        ("negative_P@5",              "Neg. P@5",          False),
+        ("negative_strict_P@5",       "Neg. Strict P@5",   False),
+        ("negative_robust_P@5",       "Neg-Rob. P@5",      False),
+        ("negative_robust_strict_P@5","Neg-Rob. Str. P@5", False),
         ("negative_HNRR@5",            "HNRR@5 (↓)",          True),
     ]
     avail = [(col, lbl, inv) for col, lbl, inv in AXES_DEF if col in macro_summary.columns]

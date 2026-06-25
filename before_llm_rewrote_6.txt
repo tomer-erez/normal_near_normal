@@ -1,0 +1,675 @@
+% WACV 2027 Paper Template
+% based on the ICCV 2025 template (https://media.eventhosts.cc/Conferences/ICCV2025/ICCV2025-Author-Kit-Feb.zip) with
+% WACV-specific details (e.g., 2 tracks) from the WACV 2025 template (https://www.dropbox.com/scl/fi/su44zgdhrzik26p2xu37k/WACV-2025-Author-Kit-Template.zip?rlkey=5qcfimjhxnmx3wlyk7yhk8wg7&dl=0)
+
+\documentclass[10pt,twocolumn,letterpaper]{article}
+
+%%%%%%%%% PAPER TYPE  - PLEASE UPDATE FOR FINAL VERSION
+\usepackage[review,applications]{wacv}      % To produce the REVIEW version for the algorithms track
+% \usepackage[review,applications]{wacv}      % To produce the REVIEW version for the applications track
+% \usepackage[review,datasets]{wacv}      % To produce the REVIEW version for the datasets track
+% \usepackage{wacv}              % To produce the CAMERA-READY version
+%\usepackage[pagenumbers]{wacv} % To force page numbers, e.g. for an arXiv version
+
+% Import additional packages in the preamble file, before hyperref
+\input{preamble}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{nicefrac}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[export]{adjustbox}
+
+\usepackage{geometry}
+
+
+
+ 
+%\usepackage[subtle]{savetrees}
+% It is strongly recommended to use hyperref, especially for the review version.
+% hyperref with option pagebackref eases the reviewers' job.
+% Please disable hyperref *only* if you encounter grave issues, 
+% e.g. with the file validation for the camera-ready version.
+%
+% If you comment hyperref and then uncomment it, you should delete *.aux before re-running LaTeX.
+% (Or just hit 'q' on the first LaTeX run, let it finish, and you should be clear).
+\definecolor{wacvblue}{rgb}{0.21,0.49,0.74}
+\usepackage[pagebackref,breaklinks,colorlinks,allcolors=wacvblue]{hyperref}
+
+%%%%%%%%% PAPER ID  - PLEASE UPDATE
+\def\wacvPaperID{774} % *** Enter the WACV Paper ID here
+\def\confName{WACV}
+\def\confYear{2027}
+
+
+
+
+
+%%%%%%%%% TITLE - PLEASE UPDATE
+\title{CXR-Retrieve: Compositional Text-to-Image Retrieval in Chest Radiography}%: Benchmarking Precision and Negation Awareness}
+
+%%%%%%%%% AUTHORS - PLEASE UPDATE
+\author{Tomer Erez\\
+Technion -- Israel Institute of Technology\\
+{\tt\small tomer.erez@campus.technion.ac.il}
+\and
+Moshe Kimhi\\
+Technion -- Israel Institute of Technology\\
+{\tt\small moshekimhi@campus.technion.ac.il}
+}
+
+\newcommand\mk[1]{\textcolor{cyan}{(\textbf{Moshe}: #1)}}
+\newcommand\te[1]{\textcolor{red}{(\textbf{Tomer}: #1)}}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Large chest radiography archives are difficult to search because most studies are paired only with free-text reports rather than structured clinical annotations. Vision-language models offer a natural interface for text-to-image retrieval, but current biomedical models are primarily optimized for report-to-image matching rather than for satisfying short clinical search queries. This creates an objective mismatch: a model may retrieve images related to words in the query while failing to satisfy the full clinical constraint, especially for conjunctions and negations such as ``atelectasis and no pneumonia.''
+
+We introduce \textsc{CXR-Retrieve}, a structured benchmark for compositional chest X-ray text-to-image retrieval. The benchmark contains 5,159 test images and 145 textual queries spanning single and conjunction findings, both positive and negatives. Relevance is defined by whether a retrieved image satisfies all asserted pathology constraints, rather than by whether it matches a paired report.
+
+We further propose a label-aware contrastive fine-tuning objective for clinical retrieval. Our method attracts image-text pairs with compatible asserted pathology constraints, including shared confirmed absences, while explicitly repelling contradictory pairs. Starting from the in-domain CXR-CLIP checkpoint, our method improves Precision@5 over CXR-CLIP by 8.5 percentage points on two-pathology conjunctions and by 22.0 percentage points on negation queries. These results show that reliable chest X-ray retrieval requires training objectives that model not only which findings are mentioned, but also how they are clinically asserted.
+\end{abstract}
+
+
+
+% The Vulnerability: MIMIC-CXR is a single-center dataset. Medical imaging models are notorious for failing when tested on data from different hospitals due to variations in scanner protocols, patient demographics, and regional clinical vernacular.
+% The Fix: While you don't necessarily have to run a full cross-dataset training pipeline before submission, reviewers will ask about out-of-distribution (OOD) performance. If you have the bandwidth to evaluate your trained model zero-shot on an external dataset (like CheXpert or PadChest) using your same query metrics, it would make the paper incredibly strong. If not, add this to your Limitations/Future Work.
+
+
+
+% The Vulnerability: These are threshold-based metrics. Reviewers in the retrieval space often look for ranking-aware metrics like mean Average Precision (mAP) or Normalized Discounted Cumulative Gain (NDCG). Precision@5 treats the 1st and 5th retrieved images equally, but in a real search interface, the top-ranked image matters most.
+% The Fix: Adding mAP to your parallel coordinates chart or tables would provide a more complete picture of your model's ranking quality.
+
+
+% The Vulnerability: While this proves your model isn't just memorizing a single rigid string, real clinical queries are rarely this clean. Doctors use abbreviations (e.g., "PTX" for pneumothorax), varying terminology, or write longer, messier descriptive constraints.
+% The Fix: Consider adding a small subset of "wild" or highly unstructured queries to your evaluation, or acknowledge that the benchmark currently tests a formalized version of clinical logic rather than raw physician input.
+
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figs/negation_failure_1col.pdf}
+    \caption{example where negation query ''image with Atelectasis and no Pneumonia'' retrieves an image with both pathologies in clip based model.}
+  \label{fig:negation failure}
+\end{figure}
+
+
+\section{Introduction}
+
+Clinical medical archives contain massive volumes of imaging data, yet the vast majority remain unannotated, severely limiting searchable access. Effective zero-shot image retrieval holds profound clinical and research value: it enables rapid dataset construction, supports case-based radiologist education, and powers clinical decision-support tools that surface visually similar prior cases. While vision-language pretrained models (VLPs) like CLIP~\cite{radford2021learning} have demonstrated remarkable success in learning joint image-text embedding spaces, their application to complex medical domains remains constrained.
+
+A primary bottleneck is a fundamental objective mismatch. Most foundational medical VLPs, such as CXR-CLIP~\cite{You_2023} and BioMed-CLIP~\cite{biomedclip}, are trained almost exclusively under a \textbf{report-matching objective}, aiming to retrieve a study based on its corresponding full radiology report. This is fundamentally distinct from \textbf{clinical query retrieval}, where a user inputs a free-form constraint (e.g., ``pleural effusion but no cardiomegaly'') to retrieve scans satisfying that specific clinical profile. Due to this mismatch, current models exhibit two systematic failure modes. First, \textbf{compositional queries} cause sharp precision degradation, where multi-pathology conjunctions overwhelm the model's standard retrieval capacity, as we show in Tab \ref{tab:pair_queries} . Second, \textbf{negation constraints} effectively fail entirely due to a systemic affirmation bias that incorrectly links negated text tokens to positive visual features (Tab \ref{tab:neg}). 
+
+
+To study this gap, we formulate chest X-ray text-to-image retrieval as
+constraint satisfaction over clinical findings. A retrieved image is
+relevant only if it satisfies all asserted query constraints, including
+both positive findings and explicit exclusions. This setting exposes
+failure modes that are largely hidden by report-level retrieval metrics.
+
+Our contributions are threefold.
+First, we introduce \textsc{CXR-Retrieve}, a structured benchmark for
+single-finding, conjunctive, and negation-aware chest X-ray retrieval
+derived from MIMIC-CXR-JPG labels.
+Second, we propose a conflict-aware contrastive objective that aligns
+image and text embeddings according to asserted pathology constraints:
+compatible captions provide additional positives, while contradictory
+caption-image pairs are explicitly repelled.
+Third, we provide a detailed evaluation against general-domain,
+biomedical, and in-domain chest X-ray CLIP baselines, showing that
+standard report-trained models degrade sharply on conjunction and
+negation queries, whereas our method substantially improves retrieval
+precision on these harder query types.
+
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\linewidth]{figs/teaser.jpeg}
+    \caption{}
+    \label{fig:method}
+\end{figure*}
+
+
+\section{Related Work}
+\mk{will finalize later}
+\subsection{Vision Language Pretraining for Medical Imaging}
+
+CLIP~\cite{radford2021learning}-based models struggle with radiology due to specialized medical language. CXR-CLIP~\cite{You_2023} (SOTA) and BioMed-CLIP~\cite{biomedclip} are trained for report-matching, not clinical query retrieval - a fundamentally different task.
+
+\subsection{Compositional and Negation-Aware Retrieval}
+Reference models fail at multi-constraint queries (e.g., ''A and B but not C'')
+Negation is systematically ignored - embeddings for ''pleural effusion'' and ''no pleural effusion'' are nearly identical (affirmation bias).
+
+Winoground~\cite{thrush2022winoground} 
+and COLA~\cite{ray2023cola} show that vision--language models systematically 
+fail at attribute-object binding, retrieving images based on individual concept 
+presence rather than their correct joint configuration.
+
+% \te{should we mention the following paper? zhang2025radirscalableframeworkmultigrained}
+Recent work has begun to analyze negation in CLIP-style models from a geometric perspective, suggesting that negation corresponds to structured transformations in embedding space rather than purely data-driven biases~\cite{zhang2025radirscalableframeworkmultigrained}. These approaches explore test-time or representation-level interventions to improve negation handling without retraining. In contrast, our work focuses on learning a structured supervision signal over multi-label clinical semantics, enabling compositional and negation-aware retrieval through training-time alignment grounded in explicit pathology agreement.
+
+
+
+\section{Benchmark}
+
+Our data source is MIMIC-CXR~\cite{PhysioNet-mimic-cxr-2.1.0} - 377{,}110 chest
+radiographs from 227{,}827 studies, paired only with their free-text reports
+and no structured labels --- which is why models trained to match these reports
+to images fail when queried for specific pathologies on demand. We build on the
+MIMIC-CXR-JPG~\cite{johnson2019mimicjpg} variant, which adds 14 pathology labels
+per study extracted from the reports by two medical-NLP labelers: NegBio ~\cite{peng2017negbiohighperformancetoolnegation} and CheXpert~\cite{irvin2019chexpert}; In this research we used Chexpert because it achieved higher accuracy when validated by a radiologist in MIMIC-CXR-JPG originally.
+per-label agreement against radiologist annotations is shown in
+Figure~\ref{fig:f1}. 
+This allows us to train models to match label-based queries to clinical images. The test set has 5{,}159 images and 145 queries.
+We keep 10 of the 14 labels, dropping ''Support Devices''
+(not a clinical finding) and ''No Finding'', ''Enlarged Cardiomediastinum'', and ''Pleural Other'' for low labeler precision.
+
+
+
+
+
+\subsection{Text-to-Image Retrieval with CLIP}
+We pre-compute all image embeddings offline. At query time, the model encodes the text query and retrieves the top-$K$ images whose embeddings have the highest cosine similarity with the query embedding. A query is successful if the retrieved image's labels satisfy all constraints of the query.
+
+\subsection{Label Semantics}
+Each label takes one of four values: positive (1), negative (0), uncertain
+($-1$), or unmentioned (blank). 
+This lets us construct query--image pairs over a single label or a composite of several labels, each required to be present or absent.
+
+\paragraph{Negation evaluation under missing labels.}
+Our main benchmark follows a pragmatic retrieval convention: a negated
+constraint ``no \(B\)'' is satisfied whenever \(B\) is not explicitly
+confirmed positive. This reflects how radiology reports are commonly used
+for retrospective cohort construction, but it may overestimate negation
+performance when unmentioned findings are truly unknown. We therefore
+also report a strict negation setting in which ``no \(B\)'' requires a
+confirmed negative CheXpert label. The strict setting reduces the number
+of relevant images but provides a conservative estimate of negation-aware
+retrieval performance.
+
+
+
+\begin{table}[ht]
+\centering
+\caption{Overall distribution of CheXpert label values across all samples and pathologies. The dataset is dominated by missing values (NaN).}
+\label{tab:overall_label_distribution}
+\begin{tabular}{lrr}
+\hline
+\textbf{Label} & \textbf{Count} & \textbf{Percentage} \\
+\hline
+Positive ($1$)   & 633,824   & 12.00\% \\
+Negative ($0$)   & 249,448   & 4.72\% \\
+Uncertain ($-1$) & 112,555   & 2.13\% \\
+Missing (NaN)    & 4,283,713 & 81.13\% \\
+\hline
+Total            & 5,279,540 & 100.000\% \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Per-image label count breakdown: fraction of images with zero, one or more than one label of each type.}
+\label{tab:per_row_breakdown}
+\begin{tabular}{lrrrr}
+\hline
+\textbf{Label} & \textbf{=0} & \textbf{=1} & $\mathbf{>1}$ \\
+\hline
+Positive ($1$)   & 45.3\%  & 24.2\% & 30.5\% \\
+Negative ($0$)   & 64.3\% & 19.8\% & 15.8\% \\
+Uncertain ($-1$) & 80.3\% & 14.4\% & 5.3\% \\
+Missing (NaN)    & 0.0\%  & 0.0\%  & 100.0\% \\
+\hline
+\end{tabular}
+\end{table}
+
+
+\paragraph{Caption Synthesis}
+We synthesize structured free-text captions from the categorical labels to simulate clinical queries at training time:
+\begin{itemize}
+    \item \textbf{Single (50\%):} one required finding, e.g. ``Edema''.
+    \item \textbf{Pair (25\%):} two required findings, e.g. ``Edema and consolidation''.
+    \item \textbf{Negation (25\%):} one required, other must be confirmed negative, e.g. ``Edema and no consolidation''.
+\end{itemize}
+
+\subsection{Evaluation Metrics}
+We report three metrics:
+\begin{itemize}
+\item \textbf{Precision@$k$:} fraction of the top-$k$ retrieved images that satisfy all constraints of the query, macro-averaged over all queries:
+\begin{equation}
+    P@k = \frac{1}{|Q|}\sum_{q\in Q}\frac{1}{k}\sum_{i=1}^{k}\mathbf{1}\!\left[\text{image}_i^q \in \mathcal{R}_q\right],
+\end{equation}
+where $\mathcal{R}_q$ is the set of relevant images for query-$q$.
+\item \textbf{Recall@$k$:} following standard text-to-image retrieval practice~\cite{radford2021learning}. binary indicator equal to 1 if at least one relevant image appears in the top-$k$ results:
+    \begin{equation}
+        R@k = \frac{1}{|Q|}\sum_{q\in Q}\mathbf{1}\!\left[\mathrm{top\text{-}}k(q)\cap\mathcal{R}_q\neq\varnothing\right],
+    \end{equation}
+    where $\mathcal{R}_q$ is the set of relevant images for query $q$.
+    \item \textbf{Hard Negative Retrieval Rate (HNRR)@$k$:} applied to negation queries only. For a query ``\textit{A} and no \textit{B}'', a \emph{hard negative} is a retrieved image where both pathology $A$ and pathology $B$ are confirmed present (label\,=\,1) - i.e.\ it satisfies the positive constraint while directly violating the negation. HNRR@$k$ is the fraction of the top-$k$ results that are hard negatives, macro-averaged over all negation queries:
+\begin{equation}
+\mathrm{HNRR}@k
+=
+\frac{1}{|Q|}
+\sum_{q\in Q}
+\frac{1}{k}
+\sum_{i=1}^{k}
+\mathbf{1}
+\!\left[
+\mathrm{image}_i^q \in \mathcal{H}_q
+\right],
+\label{eq:hnrr}
+\end{equation}
+
+where $\mathcal{H}_q$ denotes the set of hard negatives for query $q$, i.e., images that satisfy the positive constraint while violating the negated pathology. Lower HNRR@k is better, and a value of zero indicates that no retrieved image violates the negation constraint.
+\end{itemize}
+
+\section{Method}
+
+
+
+
+\subsection{Label-Aware Contrastive Loss}
+
+Each training sample $i$ carries a label vector
+$\mathbf{y}_i \in \{-1,0,1\}^L$ derived from its synthesized training caption:
+labels affirmed in the caption are set to $+1$, the negated label (if present)
+to $-1$, and all other entries to $0$.
+$K(i,j)$ therefore measures agreement on what each caption asserts rather than
+on the complete pathology profiles of the images, directly aligning the training
+signal with query-time semantics.
+Let $\mathbf{z}_i^v, \mathbf{z}_i^t\in\mathbb{R}^d$ be the $\ell_2$-normalised image
+and text embeddings, and $\tau$ the learned logit scale.
+
+
+
+
+\paragraph{Label kernel.}
+We measure the semantic similarity of two samples by the dot product of their label
+vectors:
+\begin{equation}
+\begin{split}
+K(i,j)
+&=
+\mathbf{y}_i^\top \mathbf{y}_j
+\\
+&=
+\underbrace{\left|\{l:y_{il}=y_{jl}=1\}\right|}_{\text{shared positives}}
++
+\underbrace{\left|\{l:y_{il}=y_{jl}=-1\}\right|}_{\text{shared negatives}}
+\\
+&\quad-
+\underbrace{\left|\{l:y_{il}y_{jl}=-1\}\right|}_{\text{conflicts}}.
+\end{split}
+\label{eq:kernel}
+\end{equation}
+$K(i,j)>0$ means the images agree on which findings are present and absent;
+$K(i,j)<0$ flags a clinical contradiction.
+We clamp $K(i,i)\leftarrow\max(K(i,i),1)$ so every image is always a positive for itself.
+
+Shared confirmed absences contribute positively to $K$ by deliberate design:
+a radiologist-confirmed absence is a genuine visual feature, and negation query
+training requires this signal --- when the caption is ``edema and no consolidation'',
+images sharing a confirmed absence of consolidation must attract so the model learns
+what ``no~X'' looks like.
+Crucially, confirmed absences occupy only $4.7\%$ of label slots (vs.\ $12\%$
+positive, $81\%$ unmentioned), so shared absences are rare per batch pair and
+cannot dominate $K$.
+
+
+\paragraph{Soft retrieval targets.}
+The non-negative agreement scores are row-normalized to obtain soft
+contrastive targets:
+\[
+T_{ij} =
+\frac{K_{ij} + \mathbf{1}[i=j]}
+{\sum_{k=1}^{B} \left(K_{ik} + \mathbf{1}[i=k]\right)} .
+\]
+The identity term guarantees that every image remains paired with its
+own caption, while semantically compatible non-identical samples can also
+serve as positives.
+
+% \paragraph{Soft target and loss.}
+% Negative-$K$ entries are zeroed and each row is normalised to form a target
+% distribution:
+% \begin{equation}
+%     T_{ij} = \frac{\max(K(i,j),\,0)}{\sum_{k}\max(K(i,k),\,0)},
+%     \label{eq:target}
+% \end{equation}
+% which is used as the target for the standard symmetric CLIP cross-entropy:
+\begin{equation}
+\begin{split}
+\mathcal{L}
+= -\frac{1}{2B}\sum_i \Biggl[
+&\sum_j T_{ij}
+\log
+\frac{
+e^{\tau\langle \mathbf{z}_i^v,\mathbf{z}_j^t\rangle}
+}{
+\sum_k e^{\tau\langle \mathbf{z}_i^v,\mathbf{z}_k^t\rangle}
+}
+\\
++&
+\sum_j T_{ji}
+\log
+\frac{
+e^{\tau\langle \mathbf{z}_i^t,\mathbf{z}_j^v\rangle}
+}{
+\sum_k e^{\tau\langle \mathbf{z}_i^t,\mathbf{z}_k^v\rangle}
+}
+\Biggr].
+\end{split}
+\label{eq:loss}
+\end{equation}
+Where pairs with $T_{ij}>0$ attract in proportion to label agreement. All other pairs -- including clinically conflicting ones ($K(i,j)<0$) -- receive $T_{ij}=0$ and enter the softmax denominator as implicit negatives.
+
+
+
+
+\paragraph{Hard Negative Mining.}
+Pairs with $K(i,j)<0$ indicate a direct clinical contradiction: one caption asserts a finding present while the other asserts the same finding absent.
+Although these pairs already act as implicit negatives in the softmax denominator of Eq.~\ref{eq:loss}, we additionally apply an explicit repulsion hinge to sharpen their separation.
+Let $\mathcal{C} = \{(i,j) : K(i,j) < 0\}$ be the set of conflict pairs.
+The hard negative mining loss is
+\begin{equation}
+\mathcal{L}_{\mathrm{HNM}} =
+\frac{1}{|\mathcal{C}|}
+\sum_{(i,j)\in\mathcal{C}}
+\max\!\left(0,\;\tau\langle\mathbf{z}_i^v,\mathbf{z}_j^t\rangle - m\right),
+\label{eq:hnm}
+\end{equation}
+where $m\ge 0$ is a margin; pairs whose scaled cosine similarity is already below $m$ incur no penalty.
+The full training objective combines the contrastive attraction loss with this auxiliary repulsion:
+\begin{equation}
+\mathcal{L}_{\mathrm{total}} = \mathcal{L} + \lambda_{\mathrm{HNM}}\,\mathcal{L}_{\mathrm{HNM}},
+\label{eq:total}
+\end{equation}
+with $\lambda_{\mathrm{HNM}}$ chosen to keep the repulsion weaker than the contrastive attraction in Eq.~\ref{eq:loss}.
+
+\paragraph{Encoding unmentioned labels as unknown.}
+Of all label slots in MIMIC-CXR, $81\%$ are unmentioned (NaN).
+Encoding these as absent ($-1$) would make nearly every batch pair appear to conflict --- an image with confirmed edema would conflict with any image that simply never mentions edema --- flooding $K$ with spurious negative signal.
+We therefore encode unmentioned labels as $0$ (unknown) in $\mathbf{y}_i$, so only the $4.7\%$ of slots carrying a confirmed absence contribute to $K$.
+Note the distinction from evaluation: at training time we exclude unknown slots from the supervision signal entirely; at evaluation time, those same missing labels are treated as satisfying a ``no $B$'' constraint, reflecting the clinical assumption that unmentioned findings are likely absent.
+
+
+\section{Implementation Details}
+
+\subsection{Architecture}
+
+Dual-encoder architecture: SwinT image encoder + Bio\_ClinicalBERT text encoder, initialized from the CXR-CLIP SwinT checkpoint~\cite{You_2023} and fine-tuned via LoRA adapters~\cite{hu2021loralowrankadaptationlarge}  of rank 12. Only $\sim$2\% of the model parameters are trainable ($\sim$ 3M of 138M total).
+
+\subsection{Optimization}
+We train with AdamW, learning rate $10^{-4}$, cosine decay to $10^{-8}$. Effective batch size is 140 (70 per GPU $\times$ 2 GPUs) with bfloat16 precision. For the hard negative mining weight component in the loss We use $\lambda_{\mathrm{HNM}} = 0.3$ and margin $m = 0$ (Eq.~\ref{eq:hnm}--\ref{eq:total}). 
+
+\subsection{Training captions.}
+At each step, a caption is sampled per image: 50\% single-label (``\textit{atelectasis}''), 25\% pair (``\textit{atelectasis and edema}''), 25\% negation (``\textit{atelectasis and no edema}''). Negation captions require a confirmed-absent label (CSV value 0); unmentioned labels (NaN) are treated as unknown and excluded from both the caption and the label kernel $K$.
+
+  \section{Experiments \& Results}
+
+We compare against three baselines: vanilla CLIP~\cite{radford2021learning} (general-domain), BiomedCLIP~\cite{biomedclip} (broad biomedical pretraining), and CXR-CLIP SwinT~\cite{You_2023} (report-matching on the same MIMIC-CXR data, our primary in-domain baseline). All models have comparable parameter counts ($\sim$136--154M). We report macro-averaged Precision@$K$ and Recall@$K$; since R@1 $\equiv$ P@1 we omit it for brevity.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figs/comparison_collage_2.pdf}
+\caption{Top-2 retrievals on conjunctive (\emph{top}) and negation
+  (\emph{bottom}) queries. CXR-CLIP fails on all four. Our model satisfies
+  all constraints.}  \label{fig:comparison_collage}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\linewidth]{figs/parallel_coordinates_vertical.pdf}
+  \caption{Parallel coordinates comparison across five retrieval metrics. Each axis is normalized to $[0,1]$ (0\,=\,worst, 1\,=\,best); HNRR@5 is inverted since lower is better.}
+  \label{fig:parallel_coords}
+\end{figure}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Single-Pathology Retrieval}
+
+\begin{table}[h]
+\centering
+\caption{Macro-averaged performance (\%) on single-pathology queries. CXR-CLIP (Swin-T) leads in some metrics, reflecting its strong in-domain pre-training; our model trades some single-label precision for gains on harder query types.}
+\label{tab:single_label}
+\begin{adjustbox}{width=\linewidth}
+\begin{tabular}{lccccc}
+\toprule
+Model & P@1 & P@3 & P@5 & R@3 & R@5 \\
+\midrule
+\texttt{clip}         & 30.0 & 26.7 & 24.0 & 50.0 &  60.0 \\
+\texttt{biomedclip}   & 20.0 & 20.0 & 22.0 & 40.0 &  50.0 \\
+\texttt{cxr-clip}     & 40.0 & 43.3 & \textbf{50.0} & 90.0 & \textbf{100.0} \\
+\texttt{ours}         & \textbf{50.0} & \textbf{46.7} & 48.0 & 90.0 &  90.0 \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Multi-Pathology Conjunctive Retrieval}
+
+\begin{table}[h]
+\centering
+\caption{Macro-averaged performance (\%) on conjunctive two-pathology queries (``\textit{A} and \textit{B}'').}
+\label{tab:pair_queries}
+\begin{adjustbox}{width=\linewidth}
+\begin{tabular}{lccccc}
+\toprule
+Model & P@1 & P@3 & P@5 & R@3 & R@5\\
+\midrule
+\texttt{clip}       &  6.7 &  2.2 &  2.7 &  6.7 & 11.1\\
+\texttt{biomedclip} &  0.0 &  3.0 &  5.3 &  8.9 & 20.0\\
+\texttt{cxr-clip}   & 11.1 &  9.6 & 11.1 & 22.2 & 33.3\\
+\texttt{ours}       & \textbf{24.4} & \textbf{20.0} & \textbf{19.6} & \textbf{37.8} & \textbf{51.1}\\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\paragraph{Why pair retrieval is inherently harder.}
+Of the 45 pair queries (all $\binom{10}{2}$ label combinations), half have fewer than 50 relevant images in the 5{,}159-image test gallery, and six pairs have at most 10 relevant images (e.g.\ \emph{Fracture and Pneumothorax}: 6 images; \emph{Lung Lesion and Pneumothorax}: 6 images).
+Figure~\ref{fig:pair_difficulty} illustrates this long-tail distribution.
+Beyond sparsity, single-label distractors---images positive for only one of the two queried conditions---share half the embedding signal with true co-occurrence positives, making precise ranking substantially harder than for single-label queries.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.95\linewidth]{figs/pair_query_difficulty.pdf}
+\caption{Number of relevant images per pair query in the test gallery (5{,}159 images), sorted ascending. Half of all 45 queries have fewer than 50 relevant images (\textcolor{red}{red}: ${\leq}10$, \textcolor{orange}{orange}: 11--49, \textcolor{blue}{blue}: ${\geq}50$), making conjunctive retrieval substantially harder than single-label queries.}
+\label{fig:pair_difficulty}
+\end{figure}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Negation-Aware Retrieval}
+
+\begin{table}[h]
+\centering
+\caption{Macro-averaged performance (\%) on negation queries (``\textit{A} and no \textit{B}'').}
+\label{tab:neg}
+\begin{adjustbox}{width=\linewidth}
+\begin{tabular}{lccccc}
+\toprule
+Model & P@1 & P@3 & P@5 & R@3 & R@5 \\
+\midrule
+\texttt{clip}       & 14.4 & 15.2 & 15.1 & 34.4 & 45.6 \\
+\texttt{biomedclip} & 21.1 & 16.7 & 16.2 & 33.3 & 43.3 \\
+\texttt{cxr-clip}   & 21.1 & 20.0 & 20.0 & 43.3 & 54.4 \\
+\texttt{ours}       & \textbf{48.9} & \textbf{47.0} & \textbf{42.0} & \textbf{82.2} & \textbf{90.0} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Robustness to Linguistic Variation}
+
+Although the model is trained using templates such as
+``atelectasis and no edema'', practical deployment requires robustness to alternative phrasings. Therefore, during evaluation we replace the training templates with natural language expressions such as
+``an image with atelectasis but without edema''.
+
+\begin{table}[h]
+\centering
+\caption{Performance (\%) on negation queries under linguistic variation. The template ``an image with \textit{A} but without \textit{B}'' replaces the training template ``\textit{A} and no \textit{B}''.}
+\label{tab:linguistic_variation}
+\begin{adjustbox}{width=\linewidth}
+\begin{tabular}{lccccc}
+\toprule
+Model & P@1 & P@3 & P@5 & R@3 & R@5 \\
+\midrule
+\texttt{clip}       &  8.9 & 13.0 & 10.7 & 31.1 & 37.8 \\
+\texttt{biomedclip} & 20.0 & 20.0 & 19.6 & 41.1 & 48.9 \\
+\texttt{cxr-clip}   & 32.2 & 27.8 & 25.8 & 42.2 & 53.3 \\
+\texttt{ours}       & \textbf{43.3} & \textbf{43.3} & \textbf{41.6} & \textbf{73.3} & \textbf{85.6} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Hard Negative Retrieval Rate (\%) on negation queries (lower is better). HNRR@$k$ measures the fraction of top-$k$ results that directly contradict the query (e.g.\ retrieving an ``edema'' image for ``no edema'').}
+\label{tab:hnrr}
+\begin{adjustbox}{width=\linewidth}
+\begin{tabular}{lccc}
+\toprule
+Model & HNRR@1 & HNRR@3 & HNRR@5 \\
+\midrule
+\texttt{clip}       & 4.4 & 2.6 & 2.2 \\
+\texttt{biomedclip} & 2.2 & 3.3 & 4.9 \\
+\texttt{cxr-clip}   & 3.3 & 2.6 & 2.7 \\
+\texttt{ours}       & \textbf{1.1} & \textbf{1.1} & \textbf{1.6} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+
+
+\subsection{ablation}
+
+
+
+\paragraph{different loss types: clip loss vs clip+attract vs clip+attract+hnm}
+comparing the 3 main loss variants:
+\begin{itemize}
+    \item \textbf{clip}: Standard clip, only the diagonal is a positive with itself.
+    \item \textbf{attract}: Similar to the main method, but no hard negative mining and no repel loss.
+    \item \textbf{ours} Our main method, clip + attract + HNM, as described in chapter 4.
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\caption{different loss types: clip loss vs clip+attract vs clip+attract+hnm. all p@5}
+\label{tab:loss-type-ablation}
+\begin{adjustbox}{width=\linewidth}
+\begin{tabular}{lcccc}
+\toprule
+Model & Single & Pair & Negation & HNRR \\
+\midrule
+\texttt{clip}     & 42.0  & 12.4 & 35.5 & 3.2 \\
+\texttt{attract}     & 48.0  & 17.7 & 37.1 & 3.7 \\
+\texttt{ours}     & 48.0  & 19.6 & 42.0 & 1.6 \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+
+    
+\paragraph{training captions splits: single, pair, negation} 
+50-25-25 vs other combinations affect on evals , for example show the 100-0-0 result on single vs pair vs negative, and other interesting combinations.
+what can we achieve with 100-0-0, 0-100-0, 0-0-100 splits
+\begin{table}[h]
+\centering
+\caption{training captions ablation. p@5}
+\label{tab:captions-ablation}
+\begin{adjustbox}{width=\linewidth}
+\begin{tabular}{lcccc}
+\toprule
+Model & Single & Pair & Negation\\
+\midrule
+\texttt{single only}     & 62.0  & 18.7 & 36.0 \\
+\texttt{pair only}     & 38.0  & 15.1 & 20.9 \\
+\texttt{negative only}     & 52.0  & 20.9 & 36.7 \\
+\texttt{ours}     & 50.0  & 19.6 & 42.0 \\
+
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\paragraph{Fine tuning cxr-clip vs fine tuning clip}
+Comparison of fine tuning a vanilla clip(trained on non medical domains) to fine tuning cxr clip:
+while competitive on single label queries, cxr-clip based model far beats the vanilla clip based model on difficult queries, by pair, negation, HNRR metrics. Reporting P@5.
+\begin{table}[h]
+\centering
+\caption{Fine tuning cxr-clip vs fine tuning clip. cxr-clip based model far beats vanilla clip based model on compositional queries. Reporting Precision at 5.}
+\label{tab:finetune-ablation}
+\begin{tabular}{lcccc}
+\toprule
+Model & Single & Pair & Negation & HNRR \\
+\midrule
+\texttt{vanilla}     & \textbf{50.0}  & 14.7 & 37.1 & 2.4 \\
+\texttt{cxr-clip}  & 48.0 & \textbf{19.6} & \textbf{42.0} & \textbf{1.6} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Discussion}
+In this work, we addressed the gap between report-matching and free-text clinical retrieval. Our label-aware contrastive objective and CXR-RETRIEVE benchmark significantly improve model performance on complex multi-pathology and negation queries.
+
+However, several limitations remain. First, our evaluation relies on CheXpert NLP labels; establishing a true clinical ceiling requires board-certified radiologist annotations. Second, since our models are trained solely on MIMIC-CXR, out-of-distribution validation is necessary to ensure cross-domain robustness. Finally, incorporating unstructured clinical search logs and ranking-aware metrics (e.g., mAP, NDCG) will be crucial for evaluating true real-world deployment readiness. \mk{rethink}
+
+\section{Conclusion}
+tbd
+
+
+
+{
+    \small
+    \bibliographystyle{ieeenat_fullname}
+    \bibliography{main}
+}
+
+\newpage
+
+\begin{table}[t]
+\centering
+\caption{\mk{suggested ablation} Negation retrieval under alternative relevance definitions.
+The main setting treats unmentioned findings as satisfying negation;
+the strict setting requires a confirmed negative label.}
+\label{tab:negation_strict}
+\begin{tabular}{lcccc}
+\toprule
+Setting & Model & P@1 & P@5 & HNRR@5 \\
+\midrule
+Main & CXR-CLIP & 21.1  & 20.0 & 2.7 \\
+Main & Ours & 48.9 & 42.0  & 1.6 \\
+Strict confirmed negative & CXR-CLIP & 5.1 & 5.3 & 2.7 \\
+Strict confirmed negative & Ours & 12.6 & 8.6 & 1.6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{figs/f1 scores.png}
+    \caption{\mk{supp.}Per-label F1 scores of medical NLP labeler (CheXpert) against radiologist annotations on MIMIC-CXR.}
+    \label{fig:f1}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figs/cooccurrence_matrix.pdf}
+  \caption{CheXpert label conditional co-occurrence matrix(\%). Cell $(i,j)$ shows the percentage of
+samples with label $i$ positive that also have label $j$ positive, i.e.\ $P(\text{col}=1 \mid \text{row}=1)$. Diagonal cells are always 100\,\%.}
+  \label{fig:cooccurrence}
+\end{figure}
+
+
+\end{document}

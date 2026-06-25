@@ -27,7 +27,7 @@ tmux new-session -d -s $name "
         --nan-mode ignore \
         --loss clip \
         --caption-mode all \
-        --caption-weights 0.75 0.0 0.25 \
+        --caption-weights 0.50 0.25 0.25 \
         --match-mode label_dot \
         --hnm-weight 0.3 \
         --lora-r 12 \
