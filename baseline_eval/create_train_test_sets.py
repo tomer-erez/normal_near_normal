@@ -22,19 +22,16 @@ import pandas as pd
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-SPLIT_FILE = (
-    "/home/tomererez/cxr_data/images"
-    "/mimic_cxr_jpg_images_from_google_cloud"
-    "/mimic-cxr-jpg-2.1.0.physionet.org/mimic-cxr-2.0.0-split.csv.gz"
-)
-
-
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
-    parser.add_argument("--csv", default="/home/tomererez/cxr_data/csv/all_txt_data_and_labels.csv")
-    parser.add_argument("--split", default=SPLIT_FILE)
-    parser.add_argument("--out_train", default="/home/tomererez/cxr_data/csv/mimic_cxr_train.csv")
-    parser.add_argument("--out_test", default="/home/tomererez/cxr_data/csv/mimic_cxr_official_test.csv")
+    parser.add_argument("--csv", required=True,
+                        help="Path to all_txt_data_and_labels.csv")
+    parser.add_argument("--split", required=True,
+                        help="Path to mimic-cxr-2.0.0-split.csv.gz (from PhysioNet)")
+    parser.add_argument("--out_train", default="cxr_data/mimic_cxr_train.csv",
+                        help="Output path for the train CSV")
+    parser.add_argument("--out_test", default="cxr_data/mimic_cxr_official_test.csv",
+                        help="Output path for the test CSV")
     args = parser.parse_args()
 
     log.info(f"Loading split file: {args.split}")

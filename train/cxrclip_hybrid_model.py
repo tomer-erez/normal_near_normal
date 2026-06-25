@@ -27,18 +27,7 @@ _CXRCLIP_PATH = str(REPO_ROOT / "cxr-clip")
 if _CXRCLIP_PATH not in sys.path:
     sys.path.insert(0, _CXRCLIP_PATH)
 
-
-def _make_cxrclip_preprocess(enc_name: str, image_size: int) -> transforms.Compose:
-    if enc_name == "resnet":
-        mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
-    else:
-        mean, std = [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
-    return transforms.Compose([
-        transforms.Resize(image_size, interpolation=transforms.InterpolationMode.BICUBIC),
-        transforms.CenterCrop(image_size),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=mean, std=std),
-    ])
+from .cxrclip_finetune_model import _make_cxrclip_preprocess
 
 
 def _load_cxrclip_image_side(checkpoint_path: str):

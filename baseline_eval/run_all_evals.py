@@ -69,7 +69,6 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from constants import CHEXPERT_LABELS, LABEL_COLS
 LABEL_TO_IDX = {col: i for i, col in enumerate(LABEL_COLS)}
-SHORT_LABELS = CHEXPERT_LABELS
 
 MODELS = [
     # Baselines
@@ -108,56 +107,12 @@ HNRR_COLS  = [f"HNRR@{k}" for k in KS]   # only meaningful for negative query ty
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def results_path(model: dict) -> Path:
-    # eval_model.py always receives --name and saves to results_{name}.csv
-    return REPO_ROOT / f"results_{model['name']}.csv"
+def results_path(model: dict, suffix: str = "") -> Path:
+    """Return the repo-root path for a model's results CSV.
 
-
-def results_robust_path(model: dict) -> Path:
-    """Repo-root path for linguistic robustness (rephrased template) results."""
-    base = results_path(model)
-    return base.with_name(base.stem + "_robust.csv")
-
-
-def results_strict_path(model: dict) -> Path:
-    """Repo-root path for strict-negation results (only CSV 0 counts as absent)."""
-    base = results_path(model)
-    return base.with_name(base.stem + "_strict.csv")
-
-
-def results_robust_strict_path(model: dict) -> Path:
-    """Repo-root path for rephrased template + strict negation results."""
-    base = results_path(model)
-    return base.with_name(base.stem + "_robust_strict.csv")
-
-
-def _merge_model_results(model: dict, output_dir: Path) -> pd.DataFrame | None:
+    suffix: one of "", "_robust", "_strict", "_robust_strict"
     """
-    Load and merge all four result-variant CSVs for one model from output_dir.
-
-    Returns a single DataFrame with a 'type' column distinguishing:
-      negative              — standard template, lenient
-      negative_robust       — rephrased template, lenient
-      negative_strict       — standard template, strict
-      negative_robust_strict — rephrased template, strict
-
-    Returns None if the primary results file does not exist.
-    """
-    out_path = output_dir / results_path(model).name
-    if not out_path.exists():
-        return None
-    frames = [pd.read_csv(out_path)]
-    for path_fn, new_type in [
-        (results_robust_path,       "negative_robust"),
-        (results_strict_path,       "negative_strict"),
-        (results_robust_strict_path,"negative_robust_strict"),
-    ]:
-        p = output_dir / path_fn(model).name
-        if p.exists():
-            df = pd.read_csv(p)
-            df.loc[df["type"] == "negative", "type"] = new_type
-            frames.append(df)
-    return pd.concat(frames, ignore_index=True)
+    return REPO_ROOT / f"results_{model['name']}{suffix}.csv"
 
 
 def run_eval(model: dict, paired_dir: str, csv: str,
@@ -205,7 +160,7 @@ def run_eval(model: dict, paired_dir: str, csv: str,
         ]
     log.info(f"Running: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
-    return results_strict_path(model) if strict else results_path(model)
+    return results_path(model, "_strict") if strict else results_path(model)
 
 
 def build_summary(all_results: dict[str, pd.DataFrame], qtype: str) -> pd.DataFrame:
@@ -521,8 +476,8 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
             fig, ax = plt.subplots(figsize=(14, 11))
             sns.heatmap(
                 matrix,
-                xticklabels=SHORT_LABELS,
-                yticklabels=SHORT_LABELS,
+                xticklabels=CHEXPERT_LABELS,
+                yticklabels=CHEXPERT_LABELS,
                 annot=True, fmt=".2f",
                 cmap="YlOrRd",
                 vmin=0, vmax=1,
@@ -1126,10 +1081,10 @@ def main():
         log.info("--plots_only: loading existing result CSVs from %s", output_dir)
         all_results = {}
         for model in MODELS:
-            out_path        = output_dir / results_path(model).name
-            out_path_rob    = output_dir / results_robust_path(model).name
-            out_path_str    = output_dir / results_strict_path(model).name
-            out_path_rob_str = output_dir / results_robust_strict_path(model).name
+            out_path         = output_dir / results_path(model).name
+            out_path_rob     = output_dir / results_path(model, "_robust").name
+            out_path_str     = output_dir / results_path(model, "_strict").name
+            out_path_rob_str = output_dir / results_path(model, "_robust_strict").name
             if not out_path.exists():
                 log.info("  no CSV for %s, skipping", model["name"])
                 continue
@@ -1205,10 +1160,10 @@ def main():
         print("\n" + "=" * 80)
         log.info(f"Evaluating model {i+1}/{len(MODELS)}: {model['name']}")
 
-        out_path        = output_dir / results_path(model).name
-        out_path_rob    = output_dir / results_robust_path(model).name
-        out_path_str    = output_dir / results_strict_path(model).name
-        out_path_rob_str = output_dir / results_robust_strict_path(model).name
+        out_path         = output_dir / results_path(model).name
+        out_path_rob     = output_dir / results_path(model, "_robust").name
+        out_path_str     = output_dir / results_path(model, "_strict").name
+        out_path_rob_str = output_dir / results_path(model, "_robust_strict").name
 
         # ── guard: skip missing checkpoints ───────────────────────────────────
         checkpoint_file = CHECKPOINTS_DIR / model["checkpoint"] if model["checkpoint"] else None

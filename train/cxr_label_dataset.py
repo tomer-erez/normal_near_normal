@@ -29,10 +29,9 @@ class CXRLabelDataset(Dataset):
                       "negative" (1 pos + 1 neg → "atelectasis and no cardiomegaly"),
                       "both" (75% single / 25% pair),
                       "all"  (50% single / 25% pair / 25% negative).
-        nan_mode: "negative" (default) — NaN (not mentioned) is treated the same
-                  as CSV 0 (explicitly ruled out), both encoded as -1.0 (negative).
-                  "ignore" — NaN is encoded as 0.0 (ignored), so only CSV 0 counts
-                  as a negative label.
+        nan_mode: "ignore" (default) — NaN (not mentioned) is encoded as 0.0
+                  (ignored), so only CSV 0 counts as a negative label.
+                  "negative" — NaN and CSV 0 are both treated as absent (-1.0).
         max_samples: cap for debugging.
         seed: used only for shuffling when max_samples is set.
     """
@@ -49,10 +48,11 @@ class CXRLabelDataset(Dataset):
         max_samples: int | None = None,
         seed: int = 42,
     ):
-        _ALIASES = {"single_only": "single", "pair_only": "pair", "neg_only": "negative"}
-        caption_mode = _ALIASES.get(caption_mode, caption_mode)
-        assert caption_mode in ("single", "pair", "both", "negative", "all")
-        assert nan_mode in ("negative", "ignore")
+        if caption_mode not in ("single", "pair", "both", "negative", "all"):
+            raise ValueError(f"Invalid caption_mode {caption_mode!r}. "
+                             "Choose from: single, pair, both, negative, all.")
+        if nan_mode not in ("negative", "ignore"):
+            raise ValueError(f"Invalid nan_mode {nan_mode!r}. Choose from: negative, ignore.")
         self.transform = transform
         self.tokenizer = tokenizer
         self.caption_mode = caption_mode
@@ -80,8 +80,10 @@ class CXRLabelDataset(Dataset):
         n_pos = (raw == 1).sum(axis=1)
         min_pos = 2 if caption_mode == "pair" else 1
         mask_pos = n_pos >= min_pos
-        df = df[mask_pos].reset_index(drop=True) # drop rows with no positive labels, since they can't contribute to training (no positive labels → empty caption → no text features → no learning signal). This also speeds up the rest of the processing and reduces noise from "normal" cases that might be labeled as "No Finding" but are otherwise uninformative.
-        raw = raw[mask_pos]# keep in sync with df after filtering out rows with no positive labels
+        # Drop rows without enough positive labels — no positive labels means no
+        # valid caption can be built, so these samples provide no learning signal.
+        df = df[mask_pos].reset_index(drop=True)
+        raw = raw[mask_pos]
 
         # Vectorized path validation — drop rows with malformed txt_file_path
         txt_paths = df["txt_file_path"].str.replace("\\", "/", regex=False)

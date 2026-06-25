@@ -454,7 +454,7 @@ class LabelAwareClipLoss(nn.Module):
         return total_loss
 
 
-# ── Sigmoid variant (SigLIP loss) ─────────────────────────────────────────────
+# ── Image-image pair loss ─────────────────────────────────────────────────────
 
 class ImagePairAwareLoss(nn.Module):
     """
@@ -523,9 +523,11 @@ class ImagePairAwareLoss(nn.Module):
             attract, conflict = self._build_image_pair_masks(labels)
             B = labels.shape[0]
             n_pairs = B * (B - 1)
+            # Image-text CLIP component always uses diagonal targets, so each sample
+            # has exactly 1 image-text positive (itself), making diagonal_only = 100%.
             return {
                 "avg_positives_per_sample": 1.0,
-                "pct_diagonal_only": 0.0,
+                "pct_diagonal_only": 100.0,
                 "pct_conflict_pairs": 100.0 * conflict.float().sum().item() / max(n_pairs, 1),
                 "pct_attract_pairs": 100.0 * attract.float().sum().item() / max(n_pairs, 1),
             }

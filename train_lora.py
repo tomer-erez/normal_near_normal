@@ -4,6 +4,7 @@ LoRA fine-tuning for open_clip models on MIMIC-CXR CheXpert label alignment.
 Supported base models:
   - vanilla CLIP:  --base-model ViT-B-32 --pretrained openai
   - BiomedCLIP:    --base-model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224
+  - CXR-CLIP:      --cxrclip-finetune <path/to/swint_mc.pt>
 
 Saves a merged (LoRA absorbed) checkpoint at the end: {output_dir}/final_merged.pt
 This can be loaded by baseline_eval/eval_model.py with --model_type finetuned.
@@ -13,7 +14,7 @@ Single-GPU usage
 python train_lora.py \
     --base-model ViT-B-32 --pretrained openai \
     --train-csv cxr_data/mimic_cxr_train.csv \
-    --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/ \
+    --image-dir <PATH/TO/MIMIC-CXR-JPG/files/> \
     --output-dir ./experiments/lora_vitb32
 
 Multi-GPU usage (torchrun)
@@ -21,14 +22,15 @@ Multi-GPU usage (torchrun)
 torchrun --nproc_per_node=4 train_lora.py \
     --base-model ViT-B-32 --pretrained openai \
     --train-csv cxr_data/mimic_cxr_train.csv \
-    --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/ \
+    --image-dir <PATH/TO/MIMIC-CXR-JPG/files/> \
     --output-dir ./experiments/lora_vitb32_4gpu
 
-# Quick smoke-test:
+Quick smoke-test
+----------------
 python train_lora.py \
     --base-model ViT-B-32 --pretrained openai \
     --train-csv cxr_data/mimic_cxr_train.csv \
-    --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/ \
+    --image-dir <PATH/TO/MIMIC-CXR-JPG/files/> \
     --output-dir ./experiments/lora_smoke \
     --epochs 1 --batch-size 32 --max-samples 500
 """
@@ -129,7 +131,7 @@ def parse_args():
     p.add_argument("--val-split", type=float, default=0.1,
                    help="Fraction of training data held out for validation when --val-csv is not given. "
                         "Set to 0 to disable validation entirely.")
-    p.add_argument("--caption-mode", default="all", choices=["single", "pair", "both", "negative", "all", "single_only", "pair_only", "neg_only"])
+    p.add_argument("--caption-mode", default="all", choices=["single", "pair", "both", "negative", "all"])
     p.add_argument("--caption-weights", type=float, nargs=3, default=None,
                    metavar=("P_SINGLE", "P_PAIR", "P_NEG"),
                    help="Sampling probabilities for single / pair / negation captions "
@@ -721,7 +723,7 @@ def main():
     optimizer = torch.optim.AdamW(trainable, lr=args.lr, weight_decay=0.01)
 
     # ── Scheduler ─────────────────────────────────────────────────────────────
-    warmup_epochs = args.warmup_epochs if args.warmup_epochs is not None else max(1, args.epochs // 10)
+    warmup_epochs = args.warmup_epochs
 
     if args.scheduler == "cosine":
         min_factor = args.min_lr / args.lr

@@ -416,10 +416,10 @@ def main():
     parser.add_argument("--query_mode", default="all",
                         choices=["single", "pair", "negative", "all"],
                         help="Which query types to evaluate. "
-                             "'single': 13 single-label queries. "
+                             "'single': N single-label queries (N = len(CHEXPERT_LABELS)). "
                              "'pair': C(N,2) two-label AND queries (45 for N=10). "
                              "'negative': P(N,2) 'yes A and no B' queries (90 for N=10). "
-                             "'all': all 403 queries (default).")
+                             "'all': all of the above (default).")
     parser.add_argument("--cxrclip_checkpoint", default=None,
                         help="Path to CXR-CLIP .tar checkpoint (required for --model_type cxrclip)")
     parser.add_argument("--finetuned_base_model", default=None,
