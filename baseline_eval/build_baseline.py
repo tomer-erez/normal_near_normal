@@ -135,8 +135,8 @@ def run_index(embeddings_dir: Path, index_dir: Path):
 def main():
     parser = argparse.ArgumentParser(description="Build CLIP retrieval baseline for MIMIC-CXR")
     parser.add_argument("--csv", required=True, help="Path to all_txt_data_and_labels.csv")
-    parser.add_argument("--image_dir", default=r"/home/tomererez/normal_near_normal/cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files"
-                        , help="Root MIMIC-CXR image directory")
+    parser.add_argument("--image_dir", required=True,
+                        help="Root MIMIC-CXR image directory (e.g. /path/to/mimic-cxr-jpg-2.1.0.physionet.org/files/)")
     parser.add_argument("--output_dir", required=True, help="Where to store all artifacts")
     parser.add_argument("--model", default="ViT-B/32", help="CLIP model name (default: ViT-B/32)")
     parser.add_argument("--batch_size", type=int, default=256)

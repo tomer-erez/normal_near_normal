@@ -2,13 +2,13 @@
 Run retrieval evaluation for all models sequentially, then summarize results
 into comparison tables and plots.
 
-Query types evaluated
-  single                  13 queries — "atelectasis"           relevant: label==1
-  pair                    78 queries — "atelectasis and edema"  relevant: both labels==1
-  negative               156 queries — "atelectasis and no X"  relevant: pos==1 AND neg∈{0,NaN}  (lenient)
-  negative_strict        156 queries — same queries, strict: neg must be CSV 0 (NaN not counted)
-  negative_robust        156 queries — same queries, rephrased template, lenient
-  negative_robust_strict 156 queries — rephrased template, strict
+Query types evaluated (counts for N=10 active CHEXPERT_LABELS):
+  single                  10 queries — "atelectasis"           relevant: label==1
+  pair                    45 queries — "atelectasis and edema"  relevant: both labels==1  [C(N,2)]
+  negative                90 queries — "atelectasis and no X"  relevant: pos==1 AND neg∈{0,NaN}  (lenient)  [P(N,2)]
+  negative_strict         90 queries — same queries, strict: neg must be CSV 0 (NaN not counted)
+  negative_robust         90 queries — same queries, rephrased template, lenient
+  negative_robust_strict  90 queries — rephrased template, strict
 
 For each model four eval passes are run automatically:
   pass 1: single + pair + negative  (standard template, lenient: NaN=absent)
@@ -24,7 +24,7 @@ Output files (in --output_dir):
   summary_negative_robust.csv        P@k / R@k per model, negative queries rephrased (lenient)
   summary_negative_robust_strict.csv P@k / R@k per model, negative queries rephrased (strict)
   summary_macro.csv                  macro-averaged metrics per model (one row per model)
-  plots/                             comparison charts + per-model 13×13 heatmaps
+  plots/                             comparison charts + per-model NxN heatmaps (N = active labels)
 
 Usage
 -----
@@ -69,247 +69,37 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from constants import CHEXPERT_LABELS, LABEL_COLS
 LABEL_TO_IDX = {col: i for i, col in enumerate(LABEL_COLS)}
-SHORT_LABELS = [l.replace("Enlarged Cardiomediastinum", "Enlarged CM") for l in CHEXPERT_LABELS]
+SHORT_LABELS = CHEXPERT_LABELS
 
 MODELS = [
-    # {"name": "vanilla_clip",  "model_type": "vanilla_clip",  "checkpoint": None},
-    # {"name": "biomedclip",    "model_type": "biomedclip",    "checkpoint": None},
-    # {"name": "cxrclip_r50_m",   "model_type": "cxrclip", "checkpoint": "r50_m.pt"},
-    # {"name": "cxrclip_r50_mc",  "model_type": "cxrclip", "checkpoint": "r50_mc.pt"},
-    # {"name": "cxrclip_r50_mcc", "model_type": "cxrclip", "checkpoint": "r50_mcc.pt"},
-    {"name": "cxr-clip",   "model_type": "cxrclip", "checkpoint": "swint_m.pt"},
-    # {"name": "cxrclip_swint_mc",  "model_type": "cxrclip", "checkpoint": "swint_mc.pt"},
-    # {"name": "cxrclip_swint_mcc", "model_type": "cxrclip", "checkpoint": "swint_mcc.pt"},
-    # Fine-tuned models — add entries here after training:
+    # Baselines
+    # {"name": "vanilla_clip", "model_type": "vanilla_clip", "checkpoint": None},
+    # {"name": "biomedclip",   "model_type": "biomedclip",   "checkpoint": None},
+    {"name": "cxr-clip", "model_type": "cxrclip", "checkpoint": "swint_m.pt"},
+    # Fine-tuned models — add entries here after training, e.g.:
     # {
-    #     "name": "lora_vitb32_vanilla_clip",
+    #     "name": "lora_vitb32",
     #     "model_type": "finetuned",
     #     "checkpoint": None,
     #     "finetuned_base_model": "ViT-B-32",
     #     "finetuned_pretrained": "openai",
-    #     "finetuned_checkpoint": "experiments/lora_vitb32_with_5_ep/final_merged.pt",
+    #     "finetuned_checkpoint": "experiments/lora_vitb32/final_merged.pt",
     # },
-    # {
-    #     "name": "lora_biomedclip",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/lora_biomedclip_with_5_ep/final_merged.pt",
-    # },
-    # {
-    #     "name": "vanilla_clip_loss",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/_vanilla_bsz16x8/final_merged.pt",
-    # },
-
-    
-    # {
-    #     "name": "caption_mode_all_clip",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/caption_mode_all_clip/final_merged.pt",
-    # },
-
-    
-    # {
-    #     "name": "label_dot_cliploss",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/label_dot_cliploss/final_merged.pt",
-    # },   
-                                                                        
-    # {
-    #     "name": "label_dot_sigliploss",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/label_dot_sigliploss/final_merged.pt",
-    # },   
-    
-    # {
-    #     "name": "labeldot_vanilla_clip",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/claude_hyperparms_label_dot_clip/final_merged.pt",
-    # },   
-                                                                        
-
-    # {
-    #     "name": "cxrclip_r50_labeldot_unfrozen",
-    #     "model_type": "cxrclip_finetune",
-    #     "checkpoint": None,
-    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/r50_mc.pt",
-    #     "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_r50_labeldot_unfrozen/final_merged.pt",
-    # },
-    # {
-    #     "name": "labeldot_finetune_swintmc",
-    #     "model_type": "cxrclip_finetune",
-    #     "checkpoint": None,
-    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-    #     "cxrclip_finetune_merged_checkpoint": "experiments/cxrclip_swint_labeldot/final_merged.pt",
-    # },
-    
-    #     {
-    #     "name": "labeldot_nanmode_negative_from_swint",
-    #     "model_type": "cxrclip_finetune",
-    #     "checkpoint": None,
-    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-    #     "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_nanmode_negative_from_swint/final_merged.pt",
-    # },   
-        
-    #         {
-    #     "name": "labeldot_nanmode_negative_from_scratch",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/labeldot_nanmode_negative_from_scratch/final_merged.pt",
-    # },   
-            
-    #             {
-    #     "name": "claude_Fixes_to_improve_pair_from_vanilla",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/claude_Fixes_to_improve_pair/final_merged.pt",
-    # },   
-                
-    # {
-    #     "name": "c_fixes_for_better_pair_ft_from_swint_in_other_branch",
-    #     "model_type": "cxrclip_finetune",
-    #     "checkpoint": None,
-    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-    #     "cxrclip_finetune_merged_checkpoint": "experiments/c_fixes_for_better_pair_ft_from_swint/final_merged.pt",
-    # },   
-    
-    
-    # {
-    #     "name": "fine_tuning_vanilla_clip",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/labeldot_hnm_vanilla/final_merged.pt",
-    # },   
-                
-    # {
-    #     "name": "labeldot_hnm005_swint",
-    #     "model_type": "cxrclip_finetune",
-    #     "checkpoint": None,
-    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-    #     "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint/final_merged.pt",
-    # },   
-    
-    #                     {
-    #     "name": "labeldot_hnm_vanilla_hnm03",
-    #     "model_type": "finetuned",
-    #     "checkpoint": None,
-    #     "finetuned_base_model": "ViT-B-32",
-    #     "finetuned_pretrained": "",
-    #     "finetuned_checkpoint": "experiments/labeldot_hnm_vanilla_hnm03/final_merged.pt",
-    # },   
-                
- 
-    
-    #     {
-    #     "name": "labeldot_hnm_swint_hnm01",
-    #     "model_type": "cxrclip_finetune",
-    #     "checkpoint": None,
-    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-    #     "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_hnm01/final_merged.pt",
-    # },   
-        
-        
-    #         {
-    #     "name": "labeldot_hnm_swint_M_hnm01",
-    #     "model_type": "cxrclip_finetune",
-    #     "checkpoint": None,
-    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_m.pt",
-    #     "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_M_hnm01/final_merged.pt",
-    # },   
-            
-                    
-    #         {
-    #     "name": "labeldot_hnm_swint_M_hnm09",
-    #     "model_type": "cxrclip_finetune",
-    #     "checkpoint": None,
-    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_m.pt",
-    #     "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_M_hnm09/final_merged.pt",
-    # },  
-    
-    
-    # {
-    #     "name": "single_only", 
-    #     "model_type": "cxrclip_finetune",
-    #     "checkpoint": None,
-    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-    #     "cxrclip_finetune_merged_checkpoint": "experiments/single_only/final_merged.pt",
-    # },  
-                
-                
-    # {
-    #     "name": "pair_only", 
-    #     "model_type": "cxrclip_finetune",
-    #     "checkpoint": None,
-    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-    #     "cxrclip_finetune_merged_checkpoint": "experiments/pair_only/final_merged.pt",
-    # },   
-            
-    # {
-    #     "name": "neg_only", 
-    #     "model_type": "cxrclip_finetune",
-    #     "checkpoint": None,
-    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-    #     "cxrclip_finetune_merged_checkpoint": "experiments/neg_only/final_merged.pt",
-    # },  
-    
-    
-
-
-        
-    #         {
-    #     "name": "standard_hnm0", 
-    #     "model_type": "cxrclip_finetune",
-    #     "checkpoint": None,
-    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-    #     "cxrclip_finetune_merged_checkpoint": "experiments/standard_hnm0/final_merged.pt",
-    # }, 
-            
-    #             {
-    #     "name": "label_dot_hnm0", 
-    #     "model_type": "cxrclip_finetune",
-    #     "checkpoint": None,
-    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-    #     "cxrclip_finetune_merged_checkpoint": "experiments/label_dot_hnm0/final_merged.pt",
-    # }, 
-                
-                    {
-        "name": "ours", #ours
+    {
+        "name": "label_dot_hnm",
         "model_type": "cxrclip_finetune",
         "checkpoint": None,
         "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
         "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_hnm03/final_merged.pt",
-    },  
-                                        {
-        "name": "single75_neg25", #ours
+    },
+    {
+        "name": "label_dot_hnm_single75_neg25",
         "model_type": "cxrclip_finetune",
         "checkpoint": None,
         "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
         "cxrclip_finetune_merged_checkpoint": "experiments/single75_neg25/final_merged.pt",
-    },  
- ]
+    },
+]
 
 KS = [1, 3, 5]
 METRIC_COLS = [f"P@{k}" for k in KS] + [f"R@{k}" for k in KS] + [f"AP@{k}" for k in KS]
@@ -339,6 +129,35 @@ def results_robust_strict_path(model: dict) -> Path:
     """Repo-root path for rephrased template + strict negation results."""
     base = results_path(model)
     return base.with_name(base.stem + "_robust_strict.csv")
+
+
+def _merge_model_results(model: dict, output_dir: Path) -> pd.DataFrame | None:
+    """
+    Load and merge all four result-variant CSVs for one model from output_dir.
+
+    Returns a single DataFrame with a 'type' column distinguishing:
+      negative              — standard template, lenient
+      negative_robust       — rephrased template, lenient
+      negative_strict       — standard template, strict
+      negative_robust_strict — rephrased template, strict
+
+    Returns None if the primary results file does not exist.
+    """
+    out_path = output_dir / results_path(model).name
+    if not out_path.exists():
+        return None
+    frames = [pd.read_csv(out_path)]
+    for path_fn, new_type in [
+        (results_robust_path,       "negative_robust"),
+        (results_strict_path,       "negative_strict"),
+        (results_robust_strict_path,"negative_robust_strict"),
+    ]:
+        p = output_dir / path_fn(model).name
+        if p.exists():
+            df = pd.read_csv(p)
+            df.loc[df["type"] == "negative", "type"] = new_type
+            frames.append(df)
+    return pd.concat(frames, ignore_index=True)
 
 
 def run_eval(model: dict, paired_dir: str, csv: str,
@@ -675,7 +494,7 @@ def make_plots(all_results: dict, macro_summary: pd.DataFrame, plots_dir: Path):
         plt.close(fig)
         log.info(f"Saved → {path}")
 
-    # ── 7. Negative mode: 13×13 heatmap per model (both variants) ─────────────
+    # ── 7. Negative mode: NxN heatmap per model (both variants) ─────────────
     for neg_qtype, neg_subtitle in neg_variants:
         if neg_qtype not in qtypes_present:
             continue

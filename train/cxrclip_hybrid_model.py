@@ -23,13 +23,29 @@ log = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).parent.parent
 
+_CXRCLIP_PATH = str(REPO_ROOT / "cxr-clip")
+if _CXRCLIP_PATH not in sys.path:
+    sys.path.insert(0, _CXRCLIP_PATH)
+
+
+def _make_cxrclip_preprocess(enc_name: str, image_size: int) -> transforms.Compose:
+    if enc_name == "resnet":
+        mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+    else:
+        mean, std = [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
+    return transforms.Compose([
+        transforms.Resize(image_size, interpolation=transforms.InterpolationMode.BICUBIC),
+        transforms.CenterCrop(image_size),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=mean, std=std),
+    ])
+
 
 def _load_cxrclip_image_side(checkpoint_path: str):
     """
     Load (image_encoder, image_projection, encoder_name, image_size)
     from a CXR-CLIP checkpoint, with all parameters already frozen.
     """
-    sys.path.insert(0, str(REPO_ROOT / "cxr-clip"))
     from cxrclip.model import build_model
     from transformers import AutoTokenizer
 
@@ -116,21 +132,17 @@ class CXRClipHybridModel(nn.Module):
             f"text_encoder=OpenCLIP-{type(openclip_model).__name__} (trainable)"
         )
 
+    def get_preprocess(self) -> transforms.Compose:
+        """Return the image preprocessing pipeline using already-loaded config."""
+        return _make_cxrclip_preprocess(self._image_encoder_name, self._image_size)
+
     @staticmethod
-    def make_preprocess(cxrclip_checkpoint_path: str, image_size: int = 224) -> transforms.Compose:
-        """Return image preprocessing matching the CXR-CLIP checkpoint normalization."""
+    def make_preprocess(cxrclip_checkpoint_path: str) -> transforms.Compose:
+        """Return preprocessing from a checkpoint path (loads config from disk)."""
         ckpt = torch.load(cxrclip_checkpoint_path, map_location="cpu", weights_only=False)
         enc_name = ckpt["config"]["model"]["image_encoder"]["name"]
-        if enc_name == "resnet":
-            mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
-        else:
-            mean, std = [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
-        return transforms.Compose([
-            transforms.Resize(image_size, interpolation=transforms.InterpolationMode.BICUBIC),
-            transforms.CenterCrop(image_size),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=mean, std=std),
-        ])
+        image_size = ckpt["config"].get("base", {}).get("image_size", 224)
+        return _make_cxrclip_preprocess(enc_name, image_size)
 
     def encode_image(self, images, normalize: bool = False):
         feat = self.image_encoder(images)

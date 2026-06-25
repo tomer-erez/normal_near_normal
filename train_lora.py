@@ -38,18 +38,12 @@ import copy
 import logging
 import math
 import os
-import ssl
 import sys
 from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
-# Bypass SSL verification for environments with corporate certificate inspection
-ssl._create_default_https_context = ssl._create_unverified_context
-os.environ.setdefault("CURL_CA_BUNDLE", "")
-os.environ.setdefault("REQUESTS_CA_BUNDLE", "")
 
 import torch
 import torch.distributed as dist
@@ -127,8 +121,9 @@ def parse_args():
                         "full fine-tuning alongside the LoRA text encoder. "
                         "Default: image encoder is frozen.")
     # Data
-    p.add_argument("--train-csv", required=False,default="cxr_data/mimic_cxr_train.csv")
-    p.add_argument("--image-dir", required=False,default="cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/")
+    p.add_argument("--train-csv", default="cxr_data/mimic_cxr_train.csv")
+    p.add_argument("--image-dir", required=True,
+                   help="Root MIMIC-CXR image directory (e.g. /path/to/mimic-cxr-jpg-2.1.0.physionet.org/files/)")
     p.add_argument("--val-csv", default=None,
                    help="Separate validation CSV. If omitted, --val-split is used instead.")
     p.add_argument("--val-split", type=float, default=0.1,
@@ -584,7 +579,7 @@ def main():
             args.cxrclip_finetune,
             freeze_image_encoder=not args.unfreeze_image_encoder,
         )
-        preprocess_train = CXRClipFinetuneModel.make_preprocess(args.cxrclip_finetune)
+        preprocess_train = model.get_preprocess()  # avoids re-loading the checkpoint
         tokenizer = model.make_tokenizer()
     elif args.cxrclip_checkpoint:
         # Hybrid mode: frozen CXR-CLIP image encoder + trainable OpenCLIP text encoder
@@ -599,7 +594,7 @@ def main():
         )
         model = CXRClipHybridModel(args.cxrclip_checkpoint, openclip_model)
         del openclip_model
-        preprocess_train = CXRClipHybridModel.make_preprocess(args.cxrclip_checkpoint)
+        preprocess_train = model.get_preprocess()  # avoids re-loading the checkpoint
         tokenizer = open_clip.get_tokenizer(args.base_model)
         # image_encoder and image_projection are already frozen inside CXRClipHybridModel;
         # text components are trainable. LoRA will be applied to text Linear layers.
@@ -806,7 +801,10 @@ def main():
     best_val_loss = float("inf")
     best_epoch = 0
     global_step = 0
-    is_neg_aware = getattr(loss_fn, 'match_mode', None) == 'negative_aware'
+    is_neg_aware = (
+        getattr(loss_fn, 'match_mode', None) == 'negative_aware'
+        or getattr(loss_fn, 'hnm_weight', 0) > 0
+    )
     is_image_pair = isinstance(loss_fn, ImagePairAwareLoss)
     train_loss_history: list[float] = []
     val_loss_history: list[float] = []
@@ -968,7 +966,7 @@ def main():
                 wandb.log(epoch_metrics, step=global_step)
 
             monitor_loss = val_loss if val_loss is not None else train_loss
-            if (monitor_loss < best_val_loss) or epoch == 1:
+            if monitor_loss < best_val_loss:
                 best_val_loss = monitor_loss
                 best_epoch = epoch
                 best_path = output_dir / "best_adapter.pt"

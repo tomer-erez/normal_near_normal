@@ -18,15 +18,6 @@ from torch.utils.data import Dataset
 from constants import CHEXPERT_LABELS, LABEL_COLS
 
 
-def _resolve_image_path(row, image_dir: Path) -> Path:
-    raw = str(row["txt_file_path"]).replace("\\", "/")
-    parts = Path(raw).parts  # ('p10', 'p10000032', 's50414267.txt')
-    if len(parts) != 3:
-        return None
-    study_dir = image_dir / parts[0] / parts[1] / parts[2].replace(".txt", "")
-    return study_dir / f"{row['metadata_dicom_id']}.jpg"
-
-
 def _build_caption(labels: list[str]) -> str:
     return " and ".join(l.lower() for l in labels)
 

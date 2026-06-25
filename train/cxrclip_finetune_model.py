@@ -26,6 +26,10 @@ log = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).parent.parent
 MAX_TEXT_LEN = 32  # label captions are ≤10 tokens; 32 is safe and saves seq_len² attention memory
 
+_CXRCLIP_PATH = str(REPO_ROOT / "cxr-clip")
+if _CXRCLIP_PATH not in sys.path:
+    sys.path.insert(0, _CXRCLIP_PATH)
+
 
 class ClinicalBERTTokenizerWrapper:
     """
@@ -52,9 +56,21 @@ class ClinicalBERTTokenizerWrapper:
         return enc["input_ids"]  # (N, max_length)
 
 
+def _make_cxrclip_preprocess(enc_name: str, image_size: int) -> transforms.Compose:
+    if enc_name == "resnet":
+        mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+    else:
+        mean, std = [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
+    return transforms.Compose([
+        transforms.Resize(image_size, interpolation=transforms.InterpolationMode.BICUBIC),
+        transforms.CenterCrop(image_size),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=mean, std=std),
+    ])
+
+
 def _load_cxrclip(checkpoint_path: str):
     """Return the full CXRClip model + config + HF tokenizer from a checkpoint."""
-    sys.path.insert(0, str(REPO_ROOT / "cxr-clip"))
     from cxrclip.model import build_model
     from transformers import AutoTokenizer
 
@@ -135,21 +151,17 @@ class CXRClipFinetuneModel(nn.Module):
             f"pooling={self._text_pooling}"
         )
 
+    def get_preprocess(self) -> transforms.Compose:
+        """Return the image preprocessing pipeline using already-loaded config."""
+        return _make_cxrclip_preprocess(self._image_encoder_name, self._image_size)
+
     @staticmethod
     def make_preprocess(checkpoint_path: str) -> transforms.Compose:
+        """Return preprocessing from a checkpoint path (loads config from disk)."""
         ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
         enc_name = ckpt["config"]["model"]["image_encoder"]["name"]
         image_size = ckpt["config"].get("base", {}).get("image_size", 224)
-        if enc_name == "resnet":
-            mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
-        else:
-            mean, std = [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
-        return transforms.Compose([
-            transforms.Resize(image_size, interpolation=transforms.InterpolationMode.BICUBIC),
-            transforms.CenterCrop(image_size),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=mean, std=std),
-        ])
+        return _make_cxrclip_preprocess(enc_name, image_size)
 
     def make_tokenizer(self) -> ClinicalBERTTokenizerWrapper:
         return ClinicalBERTTokenizerWrapper(self._hf_tokenizer, MAX_TEXT_LEN)
