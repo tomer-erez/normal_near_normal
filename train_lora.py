@@ -4,6 +4,7 @@ LoRA fine-tuning for open_clip models on MIMIC-CXR CheXpert label alignment.
 Supported base models:
   - vanilla CLIP:  --base-model ViT-B-32 --pretrained openai
   - BiomedCLIP:    --base-model hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224
+  - CXR-CLIP:      --cxrclip-finetune <path/to/swint_mc.pt>
 
 Saves a merged (LoRA absorbed) checkpoint at the end: {output_dir}/final_merged.pt
 This can be loaded by baseline_eval/eval_model.py with --model_type finetuned.
@@ -13,7 +14,7 @@ Single-GPU usage
 python train_lora.py \
     --base-model ViT-B-32 --pretrained openai \
     --train-csv cxr_data/mimic_cxr_train.csv \
-    --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/ \
+    --image-dir <PATH/TO/MIMIC-CXR-JPG/files/> \
     --output-dir ./experiments/lora_vitb32
 
 Multi-GPU usage (torchrun)
@@ -21,14 +22,15 @@ Multi-GPU usage (torchrun)
 torchrun --nproc_per_node=4 train_lora.py \
     --base-model ViT-B-32 --pretrained openai \
     --train-csv cxr_data/mimic_cxr_train.csv \
-    --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/ \
+    --image-dir <PATH/TO/MIMIC-CXR-JPG/files/> \
     --output-dir ./experiments/lora_vitb32_4gpu
 
-# Quick smoke-test:
+Quick smoke-test
+----------------
 python train_lora.py \
     --base-model ViT-B-32 --pretrained openai \
     --train-csv cxr_data/mimic_cxr_train.csv \
-    --image-dir /mnt/walkure_public/users/tomererez/mimic_cxr_jpg_images/ \
+    --image-dir <PATH/TO/MIMIC-CXR-JPG/files/> \
     --output-dir ./experiments/lora_smoke \
     --epochs 1 --batch-size 32 --max-samples 500
 """
@@ -38,18 +40,12 @@ import copy
 import logging
 import math
 import os
-import ssl
 import sys
 from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
-# Bypass SSL verification for environments with corporate certificate inspection
-ssl._create_default_https_context = ssl._create_unverified_context
-os.environ.setdefault("CURL_CA_BUNDLE", "")
-os.environ.setdefault("REQUESTS_CA_BUNDLE", "")
 
 import torch
 import torch.distributed as dist
@@ -127,14 +123,15 @@ def parse_args():
                         "full fine-tuning alongside the LoRA text encoder. "
                         "Default: image encoder is frozen.")
     # Data
-    p.add_argument("--train-csv", required=False,default="cxr_data/mimic_cxr_train.csv")
-    p.add_argument("--image-dir", required=False,default="cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/")
+    p.add_argument("--train-csv", default="cxr_data/mimic_cxr_train.csv")
+    p.add_argument("--image-dir", required=True,
+                   help="Root MIMIC-CXR image directory (e.g. /path/to/mimic-cxr-jpg-2.1.0.physionet.org/files/)")
     p.add_argument("--val-csv", default=None,
                    help="Separate validation CSV. If omitted, --val-split is used instead.")
     p.add_argument("--val-split", type=float, default=0.1,
                    help="Fraction of training data held out for validation when --val-csv is not given. "
                         "Set to 0 to disable validation entirely.")
-    p.add_argument("--caption-mode", default="all", choices=["single", "pair", "both", "negative", "all", "single_only", "pair_only", "neg_only"])
+    p.add_argument("--caption-mode", default="all", choices=["single", "pair", "both", "negative", "all"])
     p.add_argument("--caption-weights", type=float, nargs=3, default=None,
                    metavar=("P_SINGLE", "P_PAIR", "P_NEG"),
                    help="Sampling probabilities for single / pair / negation captions "
@@ -584,7 +581,7 @@ def main():
             args.cxrclip_finetune,
             freeze_image_encoder=not args.unfreeze_image_encoder,
         )
-        preprocess_train = CXRClipFinetuneModel.make_preprocess(args.cxrclip_finetune)
+        preprocess_train = model.get_preprocess()  # avoids re-loading the checkpoint
         tokenizer = model.make_tokenizer()
     elif args.cxrclip_checkpoint:
         # Hybrid mode: frozen CXR-CLIP image encoder + trainable OpenCLIP text encoder
@@ -599,7 +596,7 @@ def main():
         )
         model = CXRClipHybridModel(args.cxrclip_checkpoint, openclip_model)
         del openclip_model
-        preprocess_train = CXRClipHybridModel.make_preprocess(args.cxrclip_checkpoint)
+        preprocess_train = model.get_preprocess()  # avoids re-loading the checkpoint
         tokenizer = open_clip.get_tokenizer(args.base_model)
         # image_encoder and image_projection are already frozen inside CXRClipHybridModel;
         # text components are trainable. LoRA will be applied to text Linear layers.
@@ -726,7 +723,7 @@ def main():
     optimizer = torch.optim.AdamW(trainable, lr=args.lr, weight_decay=0.01)
 
     # ── Scheduler ─────────────────────────────────────────────────────────────
-    warmup_epochs = args.warmup_epochs if args.warmup_epochs is not None else max(1, args.epochs // 10)
+    warmup_epochs = args.warmup_epochs
 
     if args.scheduler == "cosine":
         min_factor = args.min_lr / args.lr
@@ -806,7 +803,10 @@ def main():
     best_val_loss = float("inf")
     best_epoch = 0
     global_step = 0
-    is_neg_aware = getattr(loss_fn, 'match_mode', None) == 'negative_aware'
+    is_neg_aware = (
+        getattr(loss_fn, 'match_mode', None) == 'negative_aware'
+        or getattr(loss_fn, 'hnm_weight', 0) > 0
+    )
     is_image_pair = isinstance(loss_fn, ImagePairAwareLoss)
     train_loss_history: list[float] = []
     val_loss_history: list[float] = []
@@ -968,7 +968,7 @@ def main():
                 wandb.log(epoch_metrics, step=global_step)
 
             monitor_loss = val_loss if val_loss is not None else train_loss
-            if (monitor_loss < best_val_loss) or epoch == 1:
+            if monitor_loss < best_val_loss:
                 best_val_loss = monitor_loss
                 best_epoch = epoch
                 best_path = output_dir / "best_adapter.pt"

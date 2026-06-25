@@ -11,10 +11,9 @@ import pandas as pd
 import seaborn as sns
 from constants import LABEL_COLS
 
+CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "cxr_data", "all_txt_data_and_labels.csv")
 print("Loading CSV...")
-df = pd.read_csv(
-    r"/home/tomererez/normal_near_normal/cxr_data/all_txt_data_and_labels.csv"
-)
+df = pd.read_csv(CSV_PATH)
 print(f"dataset shape: {df.shape}")
 
 chexpert_cols = LABEL_COLS

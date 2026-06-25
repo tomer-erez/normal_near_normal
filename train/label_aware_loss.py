@@ -109,6 +109,48 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def _build_kernel_target(
+    labels: torch.Tensor,
+    match_mode: str,
+    kernel_alpha: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Shared kernel logic for graded, signed_kernel, and label_dot match modes.
+
+    Returns (target, conflict) where:
+      target   — (B, B) float, row-normalised soft target in [0, 1]
+      conflict — (B, B) bool, True where K < 0 (net conflict)
+    """
+    pos = (labels == 1.0).float()
+    neg = (labels == -1.0).float()
+    shared_pos = (pos @ pos.T).long()
+    B = labels.shape[0]
+    diag_idx = torch.arange(B, device=labels.device)
+
+    if match_mode == "graded":
+        target = shared_pos.float()
+        target[diag_idx, diag_idx] = target[diag_idx, diag_idx].clamp(min=1.0)
+        conflict = ((pos @ neg.T) + (neg @ pos.T)) > 0
+        conflict = conflict & (shared_pos == 0)
+        conflict.fill_diagonal_(False)
+    elif match_mode == "signed_kernel":
+        conflicts = (pos @ neg.T) + (neg @ pos.T)
+        K = shared_pos.float() - kernel_alpha * conflicts.float()
+        K[diag_idx, diag_idx] = K[diag_idx, diag_idx].clamp(min=1.0)
+        conflict = K < 0
+        conflict.fill_diagonal_(False)
+        target = K.clamp(min=0.0)
+    else:  # label_dot
+        K = labels @ labels.T
+        K[diag_idx, diag_idx] = K[diag_idx, diag_idx].clamp(min=1.0)
+        conflict = K < 0
+        conflict.fill_diagonal_(False)
+        target = K.clamp(min=0.0)
+
+    row_sums = target.sum(dim=1, keepdim=True).clamp(min=1.0)
+    return target / row_sums, conflict
+
+
 class LabelAwareClipLoss(nn.Module):
     """
     Multi-positive contrastive loss driven by in-batch label overlap.
@@ -232,51 +274,8 @@ class LabelAwareClipLoss(nn.Module):
         # Step 2: count of shared positive labels between every pair (i, j)
         shared_pos = (pos @ pos.T).long()                    # (B, B)
 
-        if self.match_mode == "graded":
-            # Graded: soft target weight proportional to number of shared positive labels.
-            # Pairs sharing 2 labels attract more strongly than pairs sharing 1.
-            # Diagonal is clamped to ≥1 to keep the identity pairing for label-free samples.
-            target = shared_pos.float()
-            B = labels.shape[0]
-            diag_idx = torch.arange(B, device=labels.device)
-            target[diag_idx, diag_idx] = target[diag_idx, diag_idx].clamp(min=1.0)
-            # Conflict: pairs with no shared positives but at least one contradiction
-            conflict = ((pos @ neg.T) + (neg @ pos.T)) > 0
-            conflict = conflict & (shared_pos == 0)
-            conflict.fill_diagonal_(False)
-            row_sums = target.sum(dim=1, keepdim=True).clamp(min=1.0)
-            return target / row_sums, conflict
-
-        if self.match_mode == "signed_kernel":
-            # Signed kernel: K(i,j) = shared_pos - alpha * conflicts
-            # Pairs where agreement > conflict attract (weight ∝ K).
-            # Pairs where conflict > agreement get K < 0 → zero target weight,
-            # so they land in the softmax denominator as hard negatives.
-            conflicts = (pos @ neg.T) + (neg @ pos.T)       # (B, B) int
-            K = shared_pos.float() - self.kernel_alpha * conflicts.float()
-            B = labels.shape[0]
-            diag_idx = torch.arange(B, device=labels.device)
-            K[diag_idx, diag_idx] = K[diag_idx, diag_idx].clamp(min=1.0)
-            conflict = K < 0
-            conflict.fill_diagonal_(False)
-            target = K.clamp(min=0.0)
-            row_sums = target.sum(dim=1, keepdim=True).clamp(min=1.0)
-            return target / row_sums, conflict
-
-        if self.match_mode == "label_dot":
-            # Label dot-product: K(i,j) = l_i · l_j  (l ∈ {-1, 0, 1})
-            #   = shared_pos + shared_neg - conflicts
-            # Requires --nan-mode ignore so 0 means "unmentioned", not absent.
-            # Diagonal K(i,i) = ||l_i||² = # explicitly-stated labels.
-            K = labels @ labels.T                            # (B, B) float
-            B = labels.shape[0]
-            diag_idx = torch.arange(B, device=labels.device)
-            K[diag_idx, diag_idx] = K[diag_idx, diag_idx].clamp(min=1.0)
-            conflict = K < 0
-            conflict.fill_diagonal_(False)
-            target = K.clamp(min=0.0)
-            row_sums = target.sum(dim=1, keepdim=True).clamp(min=1.0)
-            return target / row_sums, conflict
+        if self.match_mode in ("graded", "signed_kernel", "label_dot"):
+            return _build_kernel_target(labels, self.match_mode, self.kernel_alpha)
 
         # Step 3: threshold → boolean positive matrix; self is always positive
         positive = shared_pos >= self._pos_threshold         # (B, B) bool
@@ -443,22 +442,19 @@ class LabelAwareClipLoss(nn.Module):
             self._last_neg_loss = neg_loss.detach()
             total_loss = total_loss + self.neg_weight * neg_loss
 
-        # Hard negative mining: explicit repulsion for pairs where one sample
-        # has label=+1 and the other has label=-1 for the same pathology.
-        # Applied on top of any match_mode; weight should be small (≪1) so
-        # the contrastive attraction term remains dominant.
-        if self.hnm_weight > 0 and conflict.any():
+        # Hard negative mining: explicit repulsion for conflict pairs.
+        # Skipped when match_mode='negative_aware' — that mode already adds its
+        # own repulsion via neg_weight above, so applying both would double-count.
+        if self.hnm_weight > 0 and self.match_mode != "negative_aware" and conflict.any():
             hnm_loss = F.relu(logits[conflict] - self.hnm_margin).mean()
             self._last_hnm_loss = hnm_loss.detach()
-            # Also exposed via _last_neg_loss so existing train-loop tracking picks it up.
-            if self._last_neg_loss is None:
-                self._last_neg_loss = self._last_hnm_loss
+            self._last_neg_loss = self._last_hnm_loss
             total_loss = total_loss + self.hnm_weight * hnm_loss
 
         return total_loss
 
 
-# ── Sigmoid variant (SigLIP loss) ─────────────────────────────────────────────
+# ── Image-image pair loss ─────────────────────────────────────────────────────
 
 class ImagePairAwareLoss(nn.Module):
     """
@@ -527,9 +523,11 @@ class ImagePairAwareLoss(nn.Module):
             attract, conflict = self._build_image_pair_masks(labels)
             B = labels.shape[0]
             n_pairs = B * (B - 1)
+            # Image-text CLIP component always uses diagonal targets, so each sample
+            # has exactly 1 image-text positive (itself), making diagonal_only = 100%.
             return {
                 "avg_positives_per_sample": 1.0,
-                "pct_diagonal_only": 0.0,
+                "pct_diagonal_only": 100.0,
                 "pct_conflict_pairs": 100.0 * conflict.float().sum().item() / max(n_pairs, 1),
                 "pct_attract_pairs": 100.0 * attract.float().sum().item() / max(n_pairs, 1),
             }
@@ -656,47 +654,10 @@ class LabelAwareSigLipLoss(nn.Module):
 
         shared_pos = (pos @ pos.T).long()
 
-        if self.match_mode == "graded":
-            # Graded: soft target in [0, 1] proportional to shared label count.
-            # Row-normalised so the strongest match in each row gets the largest weight.
-            # Uses soft BCE in forward() instead of the ±1 SigLIP formula.
-            target = shared_pos.float()
-            B = labels.shape[0]
-            diag_idx = torch.arange(B, device=labels.device)
-            target[diag_idx, diag_idx] = target[diag_idx, diag_idx].clamp(min=1.0)
-            row_sums = target.sum(dim=1, keepdim=True).clamp(min=1.0)
-            target = target / row_sums  # [0, 1]
-            conflict = ((pos @ neg.T) + (neg @ pos.T)) > 0
-            conflict = conflict & (shared_pos == 0)
-            conflict.fill_diagonal_(False)
-            return target, conflict
-
-        if self.match_mode == "signed_kernel":
-            # Signed kernel: same K formula as LabelAwareClipLoss.
-            # target ∈ [0, 1] — used with soft BCE in forward().
-            conflicts = (pos @ neg.T) + (neg @ pos.T)
-            K = shared_pos.float() - self.kernel_alpha * conflicts.float()
-            B = labels.shape[0]
-            diag_idx = torch.arange(B, device=labels.device)
-            K[diag_idx, diag_idx] = K[diag_idx, diag_idx].clamp(min=1.0)
-            conflict = K < 0
-            conflict.fill_diagonal_(False)
-            target = K.clamp(min=0.0)
-            row_sums = target.sum(dim=1, keepdim=True).clamp(min=1.0)
-            return target / row_sums, conflict
-
-        if self.match_mode == "label_dot":
-            # Label dot-product: same formula as LabelAwareClipLoss.
-            # target ∈ [0, 1] — used with soft BCE in forward().
-            K = labels @ labels.T
-            B = labels.shape[0]
-            diag_idx = torch.arange(B, device=labels.device)
-            K[diag_idx, diag_idx] = K[diag_idx, diag_idx].clamp(min=1.0)
-            conflict = K < 0
-            conflict.fill_diagonal_(False)
-            target = K.clamp(min=0.0)
-            row_sums = target.sum(dim=1, keepdim=True).clamp(min=1.0)
-            return target / row_sums, conflict
+        if self.match_mode in ("graded", "signed_kernel", "label_dot"):
+            # Soft normalised target in [0, 1] — shared with LabelAwareClipLoss.
+            # forward() uses soft BCE for these modes instead of the ±1 SigLIP formula.
+            return _build_kernel_target(labels, self.match_mode, self.kernel_alpha)
 
         positive = shared_pos >= self._pos_threshold
         positive.fill_diagonal_(True)
@@ -821,12 +782,13 @@ class LabelAwareSigLipLoss(nn.Module):
             self._last_neg_loss = neg_loss.detach()
             total_loss = total_loss + self.neg_weight * neg_loss
 
-        # Hard negative mining: explicit repulsion for conflicting pairs.
-        if self.hnm_weight > 0 and conflict.any():
+        # Hard negative mining: explicit repulsion for conflict pairs.
+        # Skipped when match_mode='negative_aware' — that mode already adds its
+        # own repulsion via neg_weight above, so applying both would double-count.
+        if self.hnm_weight > 0 and self.match_mode != "negative_aware" and conflict.any():
             hnm_loss = F.relu(logits[conflict] - self.hnm_margin).mean()
             self._last_hnm_loss = hnm_loss.detach()
-            if self._last_neg_loss is None:
-                self._last_neg_loss = self._last_hnm_loss
+            self._last_neg_loss = self._last_hnm_loss
             total_loss = total_loss + self.hnm_weight * hnm_loss
 
         return total_loss

@@ -2,19 +2,20 @@
 Unified text→image retrieval evaluation for multiple CLIP model backends.
 
 Encodes images directly from paired_dir (no pre-computed embeddings needed).
-Evaluates CheXpert label queries in three modes:
+Evaluates CheXpert label queries in three modes (counts based on active labels
+in constants.CHEXPERT_LABELS — currently 10 labels):
 
-  single    13 queries  "atelectasis"
+  single    10 queries  "atelectasis"
               relevant = label == 1
 
-  pair      78 queries  "atelectasis and edema"
+  pair      45 queries  "atelectasis and edema"   [C(10,2)]
               relevant = both labels == 1
 
-  negative  156 queries "atelectasis and no cardiomegaly"
+  negative  90 queries  "atelectasis and no cardiomegaly"   [P(10,2)]
               relevant = pos label == 1  AND  neg label == 0 or NaN
               (label=0 or NaN both mean the pathology is absent/unconfirmed)
 
-  all       (default) runs single + pair + negative
+  all       (default) runs single + pair + negative  [145 total]
 
 Supported models
 ----------------
@@ -43,6 +44,8 @@ log = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).parent.parent
 CXRCLIP_DIR = REPO_ROOT / "cxr-clip"
 sys.path.insert(0, str(REPO_ROOT))
+if str(CXRCLIP_DIR) not in sys.path:
+    sys.path.insert(0, str(CXRCLIP_DIR))
 
 from constants import CHEXPERT_LABELS, LABEL_COLS
 
@@ -123,7 +126,6 @@ class CXRHybridBackend:
         text_pretrained: str,
         device: torch.device,
     ):
-        sys.path.insert(0, str(REPO_ROOT))
         import open_clip
         from train.cxrclip_hybrid_model import CXRClipHybridModel
 
@@ -143,7 +145,7 @@ class CXRHybridBackend:
         model.to(device).eval()
         self.model = model
 
-        self.preprocess = CXRClipHybridModel.make_preprocess(cxrclip_image_checkpoint)
+        self.preprocess = model.get_preprocess()
         log.info(f"Loaded hybrid model from {hybrid_merged_checkpoint}")
 
     def encode_images(self, image_paths: list[Path], batch_size: int = 64) -> np.ndarray:
@@ -170,7 +172,6 @@ class CXRClipBackend:
     """Loads a CXR-CLIP checkpoint (.pt) from the cxr-clip repo."""
 
     def __init__(self, checkpoint_path: str, device: torch.device):
-        sys.path.insert(0, str(CXRCLIP_DIR))
         from cxrclip.data.data_utils import load_tokenizer
         from cxrclip.model import build_model
 
@@ -252,7 +253,6 @@ class CXRClipFinetuneBackend:
     """
 
     def __init__(self, image_checkpoint: str, merged_checkpoint: str, device: torch.device):
-        sys.path.insert(0, str(REPO_ROOT))
         from train.cxrclip_finetune_model import CXRClipFinetuneModel
 
         self.device = device
@@ -262,7 +262,7 @@ class CXRClipFinetuneBackend:
         model.to(device).eval()
         self.model = model
         self.tokenizer = model.make_tokenizer()
-        self.preprocess = CXRClipFinetuneModel.make_preprocess(image_checkpoint)
+        self.preprocess = model.get_preprocess()
         log.info(f"Loaded CXRClipFinetuneModel from {merged_checkpoint}")
 
     def encode_images(self, image_paths: list[Path], batch_size: int = 64) -> np.ndarray:
@@ -307,11 +307,12 @@ def build_queries(query_mode: str = "all",
       pos_label_cols — LABEL_COLS that must == 1 in relevant images
       neg_label_cols — LABEL_COLS that must == 0 in relevant images (negative mode only)
 
-    Modes:
-      single   13 queries  "atelectasis"
-      pair     78 queries  "atelectasis and edema"
-      negative 156 queries — phrasing controlled by neg_template
-      all      all of the above (403 total)
+    Query counts depend on the number of active labels N in constants.CHEXPERT_LABELS
+    (currently N=10):
+      single   N queries        "atelectasis"
+      pair     C(N,2) queries   "atelectasis and edema"
+      negative P(N,2) queries   phrasing controlled by neg_template
+      all      all of the above
 
     neg_template: Python format string with {pos} and {neg} placeholders.
       Default:  "{pos} and no {neg}"           e.g. "atelectasis and no edema"
@@ -415,10 +416,10 @@ def main():
     parser.add_argument("--query_mode", default="all",
                         choices=["single", "pair", "negative", "all"],
                         help="Which query types to evaluate. "
-                             "'single': 13 single-label queries. "
-                             "'pair': 78 two-label AND queries. "
-                             "'negative': 156 'yes A and no B' queries (uses label=0 in CSV). "
-                             "'all': all 403 queries (default).")
+                             "'single': N single-label queries (N = len(CHEXPERT_LABELS)). "
+                             "'pair': C(N,2) two-label AND queries (45 for N=10). "
+                             "'negative': P(N,2) 'yes A and no B' queries (90 for N=10). "
+                             "'all': all of the above (default).")
     parser.add_argument("--cxrclip_checkpoint", default=None,
                         help="Path to CXR-CLIP .tar checkpoint (required for --model_type cxrclip)")
     parser.add_argument("--finetuned_base_model", default=None,
