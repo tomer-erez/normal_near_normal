@@ -302,13 +302,13 @@ MODELS = [
         "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
         "cxrclip_finetune_merged_checkpoint": "experiments/labeldot_hnm_swint_hnm03/final_merged.pt",
     },  
-                                        {
-        "name": "single75_neg25", #ours
-        "model_type": "cxrclip_finetune",
-        "checkpoint": None,
-        "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
-        "cxrclip_finetune_merged_checkpoint": "experiments/single75_neg25/final_merged.pt",
-    },  
+    #                                     {
+    #     "name": "single75_neg25", #ours
+    #     "model_type": "cxrclip_finetune",
+    #     "checkpoint": None,
+    #     "cxrclip_finetune_image_checkpoint": "valid_pretrained_models_to_try/swint_mc.pt",
+    #     "cxrclip_finetune_merged_checkpoint": "experiments/single75_neg25/final_merged.pt",
+    # },  
  ]
 
 KS = [1, 3, 5]
