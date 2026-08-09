@@ -45,6 +45,12 @@ CXRCLIP_DIR = REPO_ROOT / "cxr-clip"
 sys.path.insert(0, str(REPO_ROOT))
 
 from constants import CHEXPERT_LABELS, LABEL_COLS
+from constants_odir import ODIR_LABELS, ODIR_LABEL_COLS
+
+DATASET_LABELS = {
+    "cxr": {"labels": CHEXPERT_LABELS, "label_cols": LABEL_COLS, "id_col": "metadata_dicom_id"},
+    "odir": {"labels": ODIR_LABELS, "label_cols": ODIR_LABEL_COLS, "id_col": "filename"},
+}
 
 
 # ── Dataset ───────────────────────────────────────────────────────────────────
@@ -296,7 +302,7 @@ NEG_TEMPLATE_DEFAULT = "{pos} and no {neg}"
 NEG_TEMPLATE_ROBUST  = "an image with {pos} but without {neg}"
 
 
-def build_queries(query_mode: str = "all",
+def build_queries(labels: list[str], label_cols: list[str], query_mode: str = "all",
                   neg_template: str = NEG_TEMPLATE_DEFAULT) -> list[dict]:
     """
     Build the list of retrieval queries for evaluation.
@@ -304,46 +310,50 @@ def build_queries(query_mode: str = "all",
     Each query dict has:
       query          — text sent to the model encoder
       type           — "single" | "pair" | "negative"
-      pos_label_cols — LABEL_COLS that must == 1 in relevant images
-      neg_label_cols — LABEL_COLS that must == 0 in relevant images (negative mode only)
+      pos_label_cols — label_cols entries that must == 1 in relevant images
+      neg_label_cols — label_cols entries that must == 0 in relevant images (negative mode only)
+
+    labels / label_cols: parallel lists — labels[i] is the human-readable name
+      used in query text, label_cols[i] is its CSV column name.
 
     Modes:
-      single   13 queries  "atelectasis"
-      pair     78 queries  "atelectasis and edema"
-      negative 156 queries — phrasing controlled by neg_template
-      all      all of the above (403 total)
+      single   N queries  "atelectasis"
+      pair     N choose 2 queries  "atelectasis and edema"
+      negative N*(N-1) queries — phrasing controlled by neg_template
+      all      all of the above
 
     neg_template: Python format string with {pos} and {neg} placeholders.
       Default:  "{pos} and no {neg}"           e.g. "atelectasis and no edema"
       Robust:   "an image with {pos} but without {neg}"
     """
+    label_to_col = dict(zip(labels, label_cols))
     queries = []
 
     if query_mode in ("single", "all"):
-        for label in CHEXPERT_LABELS:
+        for label in labels:
             queries.append({
                 "query": label.lower(),
                 "type": "single",
-                "pos_label_cols": [f"chexpert_{label}"],
+                "pos_label_cols": [label_to_col[label]],
                 "neg_label_cols": [],
             })
 
     if query_mode in ("pair", "all"):
-        for l1, l2 in combinations(CHEXPERT_LABELS, 2):
+        for l1, l2 in combinations(labels, 2):
             queries.append({
                 "query": f"{l1.lower()} and {l2.lower()}",
                 "type": "pair",
-                "pos_label_cols": [f"chexpert_{l1}", f"chexpert_{l2}"],
+                "pos_label_cols": [label_to_col[l1], label_to_col[l2]],
                 "neg_label_cols": [],
             })
 
     if query_mode in ("negative", "all"):
-        for l_pos, l_neg in permutations(CHEXPERT_LABELS, 2):
+        for l_pos, l_neg in permutations(labels, 2):
             queries.append({
                 "query": neg_template.format(pos=l_pos.lower(), neg=l_neg.lower()),
                 "type": "negative",
-                "pos_label_cols": [f"chexpert_{l_pos}"],
-                "neg_label_cols": [f"chexpert_{l_neg}"],
+                "pos_label_cols": [label_to_col[l_pos]],
+                "neg_label_cols": [label_to_col[l_neg]],
             })
 
     return queries
@@ -412,6 +422,10 @@ def main():
                         help="Folder with *.jpg symlinks (output of build_baseline.py)")
     parser.add_argument("--csv", required=True,
                         help="Path to all_txt_data_and_labels.csv")
+    parser.add_argument("--dataset", default="cxr", choices=["cxr", "odir"],
+                        help="Which label schema to evaluate against. 'cxr': CheXpert labels "
+                             "keyed by metadata_dicom_id. 'odir': ODIR-5K disease labels keyed "
+                             "by filename (see constants_odir.py).")
     parser.add_argument("--query_mode", default="all",
                         choices=["single", "pair", "negative", "all"],
                         help="Which query types to evaluate. "
@@ -516,8 +530,12 @@ def main():
     n_total = len(image_paths)
     log.info(f"Found {n_total:,} images in paired_dir (max_samples={args.max_samples})")
 
+    ds_info = DATASET_LABELS[args.dataset]
+    labels, label_cols, id_col = ds_info["labels"], ds_info["label_cols"], ds_info["id_col"]
+
     # ── Encode images (with disk cache) ──────────────────────────────────────
     ms_tag = f"_n{args.max_samples}" if args.max_samples is not None else ""
+    ms_tag += f"_{args.dataset}" if args.dataset != "cxr" else ""
     if args.cxrclip_checkpoint:
         cache_name = f"img_emb_{args.model_type}_{Path(args.cxrclip_checkpoint).stem}{ms_tag}.npy"
     elif args.model_type == "cxrclip_hybrid":
@@ -545,18 +563,23 @@ def main():
         log.info(f"Saved image embeddings → {cache_path}")
     log.info(f"Image embeddings: {img_emb.shape}")
 
-    # ── Load CheXpert labels ──────────────────────────────────────────────────
+    # ── Load labels ────────────────────────────────────────────────────────────
     # Keep raw values: 1=positive, 0=explicit negative, -1=uncertain, NaN=not mentioned.
-    # We need the 0 vs NaN distinction for "negative" query mode.
-    log.info("Loading CheXpert labels …")
-    df = pd.read_csv(args.csv, usecols=["metadata_dicom_id"] + LABEL_COLS)
-    df = df.set_index("metadata_dicom_id")
-    label_matrix = df.reindex(dicom_ids)[LABEL_COLS].values.astype(float)
+    # We need the 0 vs NaN distinction for "negative" query mode. (ODIR has no -1/NaN
+    # states — every value is 0 or 1 — so the same logic degenerates correctly.)
+    log.info(f"Loading {args.dataset} labels …")
+    df = pd.read_csv(args.csv, usecols=[id_col] + label_cols)
+    if args.dataset == "odir":
+        # full_df.csv's 'filename' column includes the .jpg extension; paired_dir
+        # stems (dicom_ids) don't, so strip it before indexing.
+        df[id_col] = df[id_col].str.replace(r"\.jpg$", "", regex=True)
+    df = df.set_index(id_col)
+    label_matrix = df.reindex(dicom_ids)[label_cols].values.astype(float)
     # label_matrix[i, j]: 1.0=positive, 0.0=explicit neg, NaN=not mentioned, -1.0=uncertain
     log.info(f"Label matrix shape: {label_matrix.shape}")
 
     # ── Build and encode queries ──────────────────────────────────────────────
-    queries = build_queries(args.query_mode, neg_template=args.neg_template)
+    queries = build_queries(labels, label_cols, args.query_mode, neg_template=args.neg_template)
     log.info(f"Query mode: '{args.query_mode}'  →  {len(queries)} queries")
     query_strings = [q["query"] for q in queries]
     query_emb = backend.encode_texts(query_strings)
@@ -569,8 +592,8 @@ def main():
 
     rows = []
     for i, qdef in enumerate(queries):
-        pos_indices = [LABEL_COLS.index(c) for c in qdef["pos_label_cols"]]
-        neg_indices = [LABEL_COLS.index(c) for c in qdef["neg_label_cols"]]
+        pos_indices = [label_cols.index(c) for c in qdef["pos_label_cols"]]
+        neg_indices = [label_cols.index(c) for c in qdef["neg_label_cols"]]
 
         # Positive condition: all required positive labels must equal 1
         pos_ok = (label_matrix[:, pos_indices] == 1.0).all(axis=1)

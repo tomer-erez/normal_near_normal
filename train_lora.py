@@ -67,7 +67,63 @@ import open_clip
 from open_clip.loss import ClipLoss, SigLipLoss
 
 from train.cxr_label_dataset import CXRLabelDataset
+from train.odir_label_dataset import ODIRLabelDataset
+from train.chexpert_label_dataset import ChexpertLabelDataset
 from train.label_aware_loss import LabelAwareClipLoss, LabelAwareSigLipLoss, ImagePairAwareLoss
+
+DATASET_DEFAULTS = {
+    "cxr": {
+        "train_csv": "cxr_data/mimic_cxr_train.csv",
+        "image_dir": "cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/",
+    },
+    "odir": {
+        "train_csv": "odir_data/odir_train.csv",
+        "image_dir": "odir/odir/preprocessed_images",
+    },
+    "chexpert": {
+        "train_csv": "chexpert_data/chexpert_train.csv",
+        "image_dir": "chexpert/chexpert",
+    },
+}
+
+
+def build_dataset(args, csv_path: str, transform, tokenizer, max_samples=None):
+    """Instantiate the dataset class matching args.dataset for the given CSV/split."""
+    if args.dataset == "cxr":
+        return CXRLabelDataset(
+            csv_path=csv_path,
+            image_dir=args.image_dir,
+            transform=transform,
+            tokenizer=tokenizer,
+            caption_mode=args.caption_mode,
+            caption_weights=args.caption_weights,
+            nan_mode=args.nan_mode,
+            max_samples=max_samples,
+            seed=args.seed,
+        )
+    elif args.dataset == "odir":
+        return ODIRLabelDataset(
+            csv_path=csv_path,
+            image_dir=args.image_dir,
+            transform=transform,
+            tokenizer=tokenizer,
+            caption_mode=args.caption_mode,
+            caption_weights=args.caption_weights,
+            max_samples=max_samples,
+            seed=args.seed,
+        )
+    else:  # chexpert
+        return ChexpertLabelDataset(
+            csv_path=csv_path,
+            image_dir=args.image_dir,
+            transform=transform,
+            tokenizer=tokenizer,
+            caption_mode=args.caption_mode,
+            caption_weights=args.caption_weights,
+            nan_mode=args.nan_mode,
+            max_samples=max_samples,
+            seed=args.seed,
+        )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -127,8 +183,19 @@ def parse_args():
                         "full fine-tuning alongside the LoRA text encoder. "
                         "Default: image encoder is frozen.")
     # Data
-    p.add_argument("--train-csv", required=False,default="cxr_data/mimic_cxr_train.csv")
-    p.add_argument("--image-dir", required=False,default="cxr_data/images/mimic_cxr_jpg_images_from_google_cloud/mimic-cxr-jpg-2.1.0.physionet.org/files/")
+    p.add_argument("--dataset", default="cxr", choices=["cxr", "odir", "chexpert"],
+                   help="Which dataset/label schema to train on. 'cxr': MIMIC-CXR CheXpert labels "
+                        "(CXRLabelDataset). 'odir': ODIR-5K retinal fundus disease labels "
+                        "(ODIRLabelDataset). 'chexpert': Stanford CheXpert CheXpert labels "
+                        "(ChexpertLabelDataset; --train-csv must be built with "
+                        "baseline_eval/build_chexpert_train_csv.py first). Determines defaults "
+                        "for --train-csv/--image-dir when they are not passed explicitly.")
+    p.add_argument("--train-csv", default=None,
+                   help=f"Default depends on --dataset: {DATASET_DEFAULTS['cxr']['train_csv']!r} for cxr, "
+                        f"{DATASET_DEFAULTS['odir']['train_csv']!r} for odir.")
+    p.add_argument("--image-dir", default=None,
+                   help=f"Default depends on --dataset: {DATASET_DEFAULTS['cxr']['image_dir']!r} for cxr, "
+                        f"{DATASET_DEFAULTS['odir']['image_dir']!r} for odir.")
     p.add_argument("--val-csv", default=None,
                    help="Separate validation CSV. If omitted, --val-split is used instead.")
     p.add_argument("--val-split", type=float, default=0.1,
@@ -231,7 +298,15 @@ def parse_args():
                    help="W&B run name (auto-generated if omitted).")
     p.add_argument("--wandb-entity", default=None,
                    help="W&B entity (team/user). Uses your default entity if omitted.")
-    return p.parse_args()
+    args = p.parse_args()
+
+    defaults = DATASET_DEFAULTS[args.dataset]
+    if args.train_csv is None:
+        args.train_csv = defaults["train_csv"]
+    if args.image_dir is None:
+        args.image_dir = defaults["image_dir"]
+
+    return args
 
 
 # ── LoRA setup ────────────────────────────────────────────────────────────────
@@ -642,17 +717,7 @@ def main():
     # ── Dataset ───────────────────────────────────────────────────────────────
     if is_main:
         log.info("Building dataset …")
-    full_dataset = CXRLabelDataset(
-        csv_path=args.train_csv,
-        image_dir=args.image_dir,
-        transform=preprocess_train,
-        tokenizer=tokenizer,
-        caption_mode=args.caption_mode,
-        caption_weights=args.caption_weights,
-        nan_mode=args.nan_mode,
-        max_samples=args.max_samples,
-        seed=args.seed,
-    )
+    full_dataset = build_dataset(args, args.train_csv, preprocess_train, tokenizer, max_samples=args.max_samples)
     if is_main:
         log.info(f"Full dataset size: {len(full_dataset):,}")
 
@@ -660,15 +725,7 @@ def main():
     val_dataset = None
     if args.val_csv:
         train_dataset = full_dataset
-        val_dataset = CXRLabelDataset(
-            csv_path=args.val_csv,
-            image_dir=args.image_dir,
-            transform=preprocess_train,
-            tokenizer=tokenizer,
-            caption_mode=args.caption_mode,
-            nan_mode=args.nan_mode,
-            seed=args.seed,
-        )
+        val_dataset = build_dataset(args, args.val_csv, preprocess_train, tokenizer)
         if is_main:
             log.info(f"Train: {len(train_dataset):,}  Val (from --val-csv): {len(val_dataset):,}")
     elif args.val_split > 0:
