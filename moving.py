@@ -4,13 +4,15 @@ import shutil
 
 # Files/folders to include
 files_to_tar = [
-    "",
-    "",
-    "",
+    "/home/tomererez/normal_near_normal/valid_pretrained_models_to_try",
+    "/home/tomererez/normal_near_normal/cxr_data",
+    "/home/tomererez/normal_near_normal/experiments",
+    "/home/tomererez/normal_near_normal/eval_outputs",
+    
 ]
 
 # Where to put the resulting tar
-destination = "/home/tomer/backups"
+destination = "/mnt/walkure_public/users/tomererez/tomer_ds_to_backup"
 
 # Name of the tar file
 tar_name = "backup.tar.gz"
